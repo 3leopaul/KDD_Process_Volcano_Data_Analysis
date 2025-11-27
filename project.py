@@ -250,6 +250,99 @@ def get_volcano_type_figure(df, chart_type='treemap'):
     
     return fig
 
+def get_vei_vs_deaths_figure(df):
+    """
+    Scatter plot of VEI vs Deaths.
+    High availability (Good for general trends).
+    """
+    # Filter zeros
+    df_plot = df[df['Deaths'] != 0].copy()
+
+    fig = px.scatter(
+        df_plot, x="VEI", y="Deaths",
+        title="VEI vs. Deaths",
+        template="plotly_dark",
+        hover_name="Name",
+        hover_data=["Country", "Year"]
+    )
+    fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        font=dict(color="white")
+    )
+    return fig
+
+def get_deaths_vs_injuries_figure(df):
+    """
+    Scatter plot of Deaths vs Injuries.
+    Moderate availability (~92 events).
+    """
+    # Filter zeros
+    df_plot = df[(df['Deaths'] != 0) & (df['Total_Injuries'] != 0)].copy()
+    
+    fig = px.scatter(
+        df_plot, x="Deaths", y="Total_Injuries",
+        title="Deaths vs. Injuries",
+        template="plotly_dark",
+        hover_name="Name",
+        hover_data=["Country", "Year"],
+        labels={"Total_Injuries": "Injuries"}
+    )
+    fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        font=dict(color="white")
+    )
+    return fig
+
+def get_deaths_vs_damage_figure(df):
+    """
+    Scatter plot of Deaths vs Damage.
+    Low availability (~18 events, treat as anecdotal).
+    """
+    # Filter zeros
+    df_plot = df[(df['Deaths'] != 0) & (df['Damage_Millions'] != 0)].copy()
+    
+    fig = px.scatter(
+        df_plot, x="Deaths", y="Damage_Millions",
+        title="Deaths vs. Damage ($M)",
+        template="plotly_dark",
+        hover_name="Name",
+        hover_data=["Country", "Year"]
+    )
+    fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        font=dict(color="white")
+    )
+    return fig
+
+def get_elevation_vs_vei_figure(df):
+    """
+    Scatter plot of Elevation vs VEI.
+    Full availability (Good for debunking myths).
+    """
+    # Filter zeros
+    df_plot = df[df['Elevation'] != 0].copy()
+
+    fig = px.scatter(
+        df_plot, x="VEI", y="Elevation",
+        title="Elevation vs. VEI",
+        template="plotly_dark",
+        hover_name="Name",
+        hover_data=["Country", "Year"]
+    )
+    fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        font=dict(color="white")
+    )
+    return fig
+
 # Initialize App
 app = Dash(__name__)
 
@@ -397,7 +490,19 @@ app.layout = html.Div([
                 ], style={**CARD_STYLE, 'flex': '1'})
                 # --- END OF CHANGE ---
                 
-            ],)
+            ],),
+            
+        # New Graphs Row 1
+        html.Div([
+            html.Div([dcc.Graph(id='vei-deaths-graph')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+            html.Div([dcc.Graph(id='deaths-injuries-graph')], style={**CARD_STYLE, 'flex': '1'})
+        ], style={'display': 'flex', 'margin-bottom': '20px'}),
+
+        # New Graphs Row 2
+        html.Div([
+            html.Div([dcc.Graph(id='deaths-damage-graph')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+            html.Div([dcc.Graph(id='elevation-vei-graph')], style={**CARD_STYLE, 'flex': '1'})
+        ], style={'display': 'flex'}),
 
     ], style=CONTENT_STYLE)
 ],style={'backgroundColor': '#000000', 'minHeight': '100vh'})
@@ -410,6 +515,10 @@ app.layout = html.Div([
      Output('top_countries_by_historical_deaths', 'figure'),
      Output('with_and_without_indirect_deaths_by_type', 'figure'),
      Output('volcano_type', 'figure'),
+     Output('vei-deaths-graph', 'figure'),
+     Output('deaths-injuries-graph', 'figure'),
+     Output('deaths-damage-graph', 'figure'),
+     Output('elevation-vei-graph', 'figure'),
      Output('kpi-eruptions', 'children'),
      Output('kpi-deaths', 'children'),
      Output('kpi-damage', 'children')],
@@ -448,9 +557,15 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
     fig_indirect = get_with_and_without_indirect_deaths_by_type_figure(dff)
     fig_volcano_type = get_volcano_type_figure(dff, selected_chart_type)
     
-    return fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, total_eruptions, total_deaths, total_damage
+    # New Graphs
+    fig_vei_deaths = get_vei_vs_deaths_figure(dff)
+    fig_deaths_injuries = get_deaths_vs_injuries_figure(dff)
+    fig_deaths_damage = get_deaths_vs_damage_figure(dff)
+    fig_elevation_vei = get_elevation_vs_vei_figure(dff)
+    
+    return fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei, total_eruptions, total_deaths, total_damage
 
 if __name__ == '__main__':
     print("Launching Dashboard...")
-    print("Dashboard launched at: http://127.0.0.1:7860")
-    app.run(host='127.0.0.1', port=7860, debug=True)
+    print("Dashboard launched at: http://127.0.0.1:8051")
+    app.run(host='127.0.0.1', port=8051, debug=True)
