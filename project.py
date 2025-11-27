@@ -151,33 +151,59 @@ def get_top_countries_by_historical_deaths_figure(df):
     )
     return fig
 
-def get_with_and_without_indirect_deaths_by_type_figure(df):
+def get_with_and_without_indirect_deaths_by_type_figure(df, metric='mean'):
     # Analysis 3: Secondary Hazards Impact
-    # Compares average lethality of events with vs. without Tsunami/Earthquake
+    # Compares lethality of events with vs. without Tsunami/Earthquake
+    
+    # Define aggregation logic
+    if metric == 'sum_secondary':
+        agg_func = 'sum'
+        y_label = 'Total Deaths (Secondary Hazards Only)'
+        # Filter for events with Tsunami OR Earthquake
+        # This changes the baseline ("Without") to be "Other Secondary Hazards" instead of "All Other Events"
+        df_to_use = df[df['Tsu'].notna() | df['Eq'].notna()].copy()
+    else:
+        metric_map = {
+            'mean': 'mean',
+            'median': 'median',
+            'sum': 'sum'
+        }
+        agg_func = metric_map.get(metric, 'mean')
+        df_to_use = df.copy()
+        
+        label_map = {
+            'mean': 'Average Deaths',
+            'median': 'Median Deaths',
+            'sum': 'Total Deaths (All Eruptions)'
+        }
+        y_label = label_map.get(metric, 'Average Deaths')
+
     res = []
     
     # Tsunami Analysis
-    tsu_yes = df[df['Tsu'].notna()]['Total_Deaths'].mean()
-    tsu_no = df[df['Tsu'].isna()]['Total_Deaths'].mean()
-    res.append({'Hazard': 'Tsunami', 'Status': 'With', 'Avg_Deaths': tsu_yes})
-    res.append({'Hazard': 'Tsunami', 'Status': 'Without', 'Avg_Deaths': tsu_no})
+    tsu_yes = df_to_use[df_to_use['Tsu'].notna()]['Total_Deaths'].agg(agg_func)
+    tsu_no = df_to_use[df_to_use['Tsu'].isna()]['Total_Deaths'].agg(agg_func)
+    
+    res.append({'Hazard': 'Tsunami', 'Status': 'With', 'Value': tsu_yes})
+    res.append({'Hazard': 'Tsunami', 'Status': 'Without', 'Value': tsu_no})
     
     # Earthquake Analysis
-    eq_yes = df[df['Eq'].notna()]['Total_Deaths'].mean()
-    eq_no = df[df['Eq'].isna()]['Total_Deaths'].mean()
-    res.append({'Hazard': 'Earthquake', 'Status': 'With', 'Avg_Deaths': eq_yes})
-    res.append({'Hazard': 'Earthquake', 'Status': 'Without', 'Avg_Deaths': eq_no})
+    eq_yes = df_to_use[df_to_use['Eq'].notna()]['Total_Deaths'].agg(agg_func)
+    eq_no = df_to_use[df_to_use['Eq'].isna()]['Total_Deaths'].agg(agg_func)
+    
+    res.append({'Hazard': 'Earthquake', 'Status': 'With', 'Value': eq_yes})
+    res.append({'Hazard': 'Earthquake', 'Status': 'Without', 'Value': eq_no})
     
     df_hazards = pd.DataFrame(res)
     
     fig = px.bar(
-        df_hazards, x="Hazard", y="Avg_Deaths", color="Status", barmode="group",
-        title="Impact Amplification by Secondary Hazards",
+        df_hazards, x="Hazard", y="Value", color="Status", barmode="group",
+        title=f"Impact Amplification by Secondary Hazards ({y_label})",
         template="plotly_dark",
         color_discrete_map={'With': '#ff5722', 'Without': '#757575'}
     )
     fig.update_layout(
-        yaxis_title="Average Deaths per Event",
+        yaxis_title=y_label,
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)', 
         font=dict(color="white")
@@ -466,7 +492,23 @@ app.layout = html.Div([
         
         # Correlation chart row 2
         html.Div([
-                html.Div([dcc.Graph(id='with_and_without_indirect_deaths_by_type')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+                html.Div([
+                    html.Div([
+                        dcc.RadioItems(
+                            id='secondary-hazard-metric',
+                            options=[
+                                {'label': ' Median Deaths', 'value': 'median'},
+                                {'label': ' Mean Deaths', 'value': 'mean'},
+                                {'label': ' Total Deaths (All Eruptions)', 'value': 'sum'},
+                                {'label': ' Total Deaths (Secondary Hazards Only)', 'value': 'sum_secondary'}
+                            ],
+                            value='mean',
+                            labelStyle={'display': 'inline-block', 'margin-right': '20px'},
+                            style={'color': 'white', 'marginBottom': '10px'}
+                        ),
+                    ], style={'textAlign': 'center'}),
+                    dcc.Graph(id='with_and_without_indirect_deaths_by_type')
+                ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
                 
                 # --- START OF CHANGE ---
                 html.Div([
@@ -488,10 +530,16 @@ app.layout = html.Div([
                     dcc.Graph(id='volcano_type'),
                     
                 ], style={**CARD_STYLE, 'flex': '1'})
-                # --- END OF CHANGE ---
                 
             ],),
             
+
+
+        # Row 3: Volcano Type
+        html.Div([
+            dcc.Graph(id='volcano-type-graph')
+        ], style={**CARD_STYLE, 'margin-top': '20px'}),
+
         # New Graphs Row 1
         html.Div([
             html.Div([dcc.Graph(id='vei-deaths-graph')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
@@ -526,9 +574,10 @@ app.layout = html.Div([
      Input('year-slider', 'value'),
      Input('volcano-type-selector', 'value'),
      # ADDED INPUT: The selector for the VEI chart
-     Input('vei-metric-selector', 'value')] 
+     Input('vei-metric-selector', 'value'),
+     Input('secondary-hazard-metric', 'value')] 
 )
-def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric):
+def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric):
     # Filter Data
     dff = df.copy()
     if selected_country:
@@ -554,7 +603,7 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
     fig_vei = get_vei_analysis_figure(dff, selected_vei_metric)
     
     fig_top_countries = get_top_countries_by_historical_deaths_figure(dff)
-    fig_indirect = get_with_and_without_indirect_deaths_by_type_figure(dff)
+    fig_indirect = get_with_and_without_indirect_deaths_by_type_figure(dff, selected_secondary_metric)
     fig_volcano_type = get_volcano_type_figure(dff, selected_chart_type)
     
     # New Graphs
