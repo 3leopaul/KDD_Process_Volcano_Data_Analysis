@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 from dash import Dash, dcc, html, Input, Output
 import plotly.graph_objects as go
+import numpy as np
 
 def load_data(filepath="volcano-events.tsv"):
     try:
@@ -276,51 +277,148 @@ def get_volcano_type_figure(df, chart_type='treemap'):
     
     return fig
 
-def get_vei_vs_deaths_figure(df):
-    """
-    Scatter plot of VEI vs Deaths.
-    High availability (Good for general trends).
-    """
-    # Filter zeros
-    df_plot = df[df['Deaths'] != 0].copy()
+def volcano_type_vs_hasard_heatmap(df, normalize=False):
 
-    fig = px.scatter(
-        df_plot, x="VEI", y="Deaths",
-        title="VEI vs. Deaths",
+    # 1. Prepare Data for Heatmap
+    # Assuming 'Agent' column contains comma-separated values that need to be exploded
+    if 'Agent' not in df.columns or df['Agent'].dropna().empty:
+            # Return a stylized "No Data" message instead of a blank plot
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No Hazard Data Available<br>for this selection",
+                x=0.5, y=0.5, showarrow=False, 
+                font=dict(size=20, color="gray")
+            )
+            fig.update_layout(
+                template="plotly_dark",
+                xaxis={'visible': False},
+                yaxis={'visible': False},
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
+            )
+            return fig
+
+    df_agents = df.dropna(subset=['Agent']).copy()
+    df_agents['Agent_List'] = df_agents['Agent'].apply(lambda x: [agent.strip() for agent in str(x).split(',') if agent.strip()])
+    agent_exploded = df_agents.explode('Agent_List')
+    agent_exploded.rename(columns={'Agent_List': 'Agent_Name'}, inplace=True)
+
+    # Ensure 'Type' column is present for crosstab
+    if 'Type' not in agent_exploded.columns:
+        return px.scatter().update_layout(title="No Type Data Available", template="plotly_dark")
+
+    agent_type_matrix = pd.crosstab(agent_exploded['Type'], agent_exploded['Agent_Name'])
+
+    # Logic for Normalization
+    if normalize:
+        # Calculate total events per volcano type (using the full filtered df)
+        total_events_by_type = df.groupby('Type').size()
+        
+        # Align indices: ensure we divide by the count of the correct type
+        # We only care about types present in the matrix
+        total_events_aligned = total_events_by_type.reindex(agent_type_matrix.index)
+        
+        # Divide and multiply by 100 for percentage
+        # axis=0 means divide each column by the index (row) series
+        agent_type_matrix = agent_type_matrix.div(total_events_aligned, axis=0) * 100
+        
+        title_text = "Heatmap: Risk Percentage (Hazard Probability per Eruption)"
+        color_label = "Probability (%)"
+        z_format = ".1f"
+    else:
+        title_text = "Heatmap: Volcano Types vs. Hazards (Agents)"
+        color_label = "Count"
+        z_format = "d"
+
+    # 2. Create Plotly Heatmap
+    fig = px.imshow(
+        agent_type_matrix,
+        x=agent_type_matrix.columns,
+        y=agent_type_matrix.index,
+        color_continuous_scale="Reds",
+        title=title_text,
         template="plotly_dark",
-        hover_name="Name",
-        hover_data=["Country", "Year"]
+        labels=dict(x="Hazard Agent", y="Volcano Type", color=color_label)
     )
-    fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
+
+    # Update hover template to show nice numbers
+    fig.update_traces(hovertemplate="Type: %{y}<br>Agent: %{x}<br>" + color_label + ": %{z:" + z_format + "}<extra></extra>")
+
+    # 3. Apply Common Styling (to match dashboard theme)
     fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        font=dict(color="white")
+        height=400,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="white"),
+        margin=dict(l=10, r=10, t=40, b=10),
+        autosize=False,
+        xaxis_title="Hazard Agent",
+        yaxis_title="Volcano Type"
     )
+    fig.update_xaxes(side="top")
     return fig
 
-def get_deaths_vs_injuries_figure(df):
-    """
-    Scatter plot of Deaths vs Injuries.
-    Moderate availability (~92 events).
-    """
-    # Filter zeros
-    df_plot = df[(df['Deaths'] != 0) & (df['Total_Injuries'] != 0)].copy()
+def get_type_vs_frequency(df):
+# 1. Prepare Data
+    type_stats = df.groupby('Type').agg({'Name': 'count', 'Deaths': 'mean'}).reset_index()
+    type_stats.columns = ['Type', 'Count', 'Avg_Deaths']
+    type_stats = type_stats[type_stats['Count'] > 1] # Remove singletons
+    type_stats['Avg_Deaths'] = type_stats['Avg_Deaths'].fillna(0)
     
-    fig = px.scatter(
-        df_plot, x="Deaths", y="Total_Injuries",
-        title="Deaths vs. Injuries",
-        template="plotly_dark",
-        hover_name="Name",
-        hover_data=["Country", "Year"],
-        labels={"Total_Injuries": "Injuries"}
+    # 2. Logic: Who gets a label?
+    # We label the Top 3 by Frequency AND Top 3 by Deadliness
+    top_freq = type_stats.nlargest(3, 'Count')['Type'].tolist()
+    top_dead = type_stats.nlargest(3, 'Avg_Deaths')['Type'].tolist()
+    # Combine unique labels to show
+    labels_to_show = list(set(top_freq + top_dead))
+
+    # Create a new column just for labels (others get empty string)
+    type_stats['Label'] = type_stats.apply(
+        lambda x: x['Type'] if x['Type'] in labels_to_show else "", axis=1
     )
+
+    # 3. Create Plot
+    fig = px.scatter(
+        type_stats,
+        x='Count',
+        y='Avg_Deaths',
+        size='Count',                # Bubble size = Frequency
+        color='Avg_Deaths',          # Color = Danger
+        text='Label',                # Use our smart label column
+        color_continuous_scale='Reds',
+        log_x=True,
+        log_y=True,
+        title='<b>Volcano Risk Matrix</b>: Frequency vs. Deadliness',
+        labels={'Count': 'Frequency (Log Scale)', 'Avg_Deaths': 'Avg. Deaths (Log Scale)'},
+        template="plotly_dark"
+    )
+
+    # 4. Add Quadrant Lines (The "Crosshairs")
+    # We use x=20 and y=100 as visual thresholds for "High Freq" and "High Death"
+    fig.add_hline(y=100, line_dash="dash", line_color="gray", opacity=0.5)
+    fig.add_vline(x=20, line_dash="dash", line_color="gray", opacity=0.5)
+
+    # 5. Add Context Annotations (The "Story")
+    fig.add_annotation(x=np.log10(500), y=np.log10(2000), text="<b>CRITICAL THREATS</b><br>(Frequent & Deadly)", 
+                       showarrow=False, font=dict(color="red", size=10))
+    fig.add_annotation(x=np.log10(3), y=np.log10(2000), text="<b>BLACK SWANS</b><br>(Rare but Catastrophic)", 
+                       showarrow=False, font=dict(color="orange", size=10))
+
+    # 6. Styling Polish
+    fig.update_traces(
+        textposition='top center', # Move text above dot
+        marker=dict(line=dict(width=1, color='White')) # Add white ring to dots for contrast
+    )
+    
     fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
     fig.update_layout(
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)', 
-        font=dict(color="white")
+        showlegend=False,
+        coloraxis_showscale=False,
+        font=dict(family="Arial", size=12)
     )
+
     return fig
 
 def get_deaths_vs_damage_figure(df):
@@ -535,14 +633,29 @@ app.layout = html.Div([
             
 
 
-        # Row 3: Volcano Type
-        html.Div([
-            dcc.Graph(id='volcano-type-graph')
-        ], style={**CARD_STYLE, 'margin-top': '20px'}),
+
 
         # New Graphs Row 1
         html.Div([
-            html.Div([dcc.Graph(id='vei-deaths-graph')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+            html.Div([
+                html.Div([
+                    dcc.RadioItems(
+                        id='heatmap-normalization-selector',
+                        options=[
+                            {'label': ' Count', 'value': 'count'},
+                            {'label': ' Risk Percentage', 'value': 'percent'}
+                        ],
+                        value='count',
+                        labelStyle={'display': 'inline-block', 'margin-right': '20px'},
+                        style={'color': 'white', 'marginBottom': '10px', 'textAlign': 'center'}
+                    )
+                ]),
+                # --- THE FIX IS HERE ---
+                # You must define height in CSS because autosize is False in the figure
+                dcc.Graph(id='vei-deaths-graph', style={'height': '400px', 'width': '100%'}) 
+                
+            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+            
             html.Div([dcc.Graph(id='deaths-injuries-graph')], style={**CARD_STYLE, 'flex': '1'})
         ], style={'display': 'flex', 'margin-bottom': '20px'}),
 
@@ -575,9 +688,10 @@ app.layout = html.Div([
      Input('volcano-type-selector', 'value'),
      # ADDED INPUT: The selector for the VEI chart
      Input('vei-metric-selector', 'value'),
-     Input('secondary-hazard-metric', 'value')] 
+     Input('secondary-hazard-metric', 'value'),
+     Input('heatmap-normalization-selector', 'value')] 
 )
-def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric):
+def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric):
     # Filter Data
     dff = df.copy()
     if selected_country:
@@ -607,8 +721,8 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
     fig_volcano_type = get_volcano_type_figure(dff, selected_chart_type)
     
     # New Graphs
-    fig_vei_deaths = get_vei_vs_deaths_figure(dff)
-    fig_deaths_injuries = get_deaths_vs_injuries_figure(dff)
+    fig_vei_deaths = volcano_type_vs_hasard_heatmap(dff, normalize=(selected_heatmap_metric == 'percent'))
+    fig_deaths_injuries = get_type_vs_frequency(dff)
     fig_deaths_damage = get_deaths_vs_damage_figure(dff)
     fig_elevation_vei = get_elevation_vs_vei_figure(dff)
     
