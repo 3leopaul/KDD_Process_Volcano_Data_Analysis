@@ -53,71 +53,277 @@ def clean_data(df):
 
 
 def load_data(filepath="volcano-events.tsv"):
-    try:
-        df = pd.read_csv(filepath, sep='\t')
-    except FileNotFoundError:
-        print(f"Error: File '{filepath}' not found.")
+    df = load_raw_data(filepath)
+    if df is None:
         return pd.DataFrame()
 
-    df.rename(columns={
-        'Damage ($Mil)': 'Damage_Millions',
-        'Total Damage ($Mil)': 'Total_Damage_Millions',
-        'Elevation (m)': 'Elevation',
-        'Total Deaths': 'Total_Deaths',
-        'Total Injuries': 'Total_Injuries'
-    }, inplace=True)
+    df = clean_data(df)
 
+    # Ensure Year is numeric and drop rows with missing Year (critical for slider)
+    # This might be redundant if added to clean_data, but keeping it here for safety as per plan
     df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
     df.dropna(subset=['Year'], inplace=True)
-    df['VEI'] = pd.to_numeric(df['VEI'], errors='coerce')
-    df['Deaths'] = pd.to_numeric(df['Deaths'], errors='coerce').fillna(0)
-    df['Damage_Millions'] = pd.to_numeric(df['Damage_Millions'], errors='coerce').fillna(0)
-    df.dropna(subset=['Latitude', 'Longitude', 'Country'], inplace=True)
+    
     return df
 
-def get_map_figure(df):
+def get_map_points(df):
+    # Copy the dataframe to avoid modifying the original one
     df_map = df.copy()
+
+    # Replace missing VEI values with a small default value (0.5)
+    # to avoid invisible points on the map
     df_map['VEI_Size'] = df_map['VEI'].fillna(0.5)
 
+    # Create the base geographic scatter plot
     fig = px.scatter_geo(
         df_map,
-        lat="Latitude",
-        lon="Longitude",
-        color="Type",
-        size="VEI_Size",
-        hover_name="Name",
-        hover_data={"Country": True, "Year": True, "Deaths": True, "VEI_Size": False},
-        title="Global Volcano Distribution",
-        projection="natural earth",
-        size_max=15,
-        template="plotly_dark",
-        color_discrete_sequence=px.colors.qualitative.Bold
+        lat="Latitude",           # latitude of volcano
+        lon="Longitude",          # longitude of volcano
+        color="Type",             # volcano morphological category
+        size="VEI_Size",          # bubble size based on VEI (explosivity)
+        hover_name="Name",        # volcano name in tooltip
+        hover_data={              # additional tooltip information
+            "Country": True,
+            "Year": True,
+            "Deaths": True,
+            "VEI": True,
+            "VEI_Size": False
+        },
+        title="Global Volcano Distribution (Bubble size = VEI)",
+        projection="natural earth", # projection style
+        size_max=15,                # maximum bubble size
+        template="plotly_dark"      # dark theme to match dashboard
     )
+
+    # Custom color palette: 20 vivid volcanic colors (orange → red → magenta → violet)
+    warm_palette = [
+        "#ffb74d", "#ffa726", "#ff9800", "#fb8c00", "#f57c00", "#ef6c00",
+        "#e65100", "#ff6d00", "#ff3d00", "#dd2c00",
+        "#ff1744", "#f50057", "#d50000", "#c51162", "#aa00ff",
+        "#9c27b0", "#8e24aa", "#7b1fa2", "#6a1b9a", "#6200ea"
+    ]
+
+    n_traces = len(fig.data)   # one trace per volcano Type
+    n_colors = len(warm_palette)
+
+    # Assign a distinct color from the palette to each volcano Type
+    for i, trace in enumerate(fig.data):
+        color = warm_palette[i % n_colors]     # loop through palette if Types > 20
+        trace.marker.update(
+            color=color,
+            line=dict(width=0)                 # remove outline for cleaner look
+        )
+
+    # Add geographic features (coastlines, countries, land)
+    fig.update_geos(
+        showcountries=True,
+        showcoastlines=True,
+        showland=True,
+    )
+
+    # Transparent background to match the dashboard's dark theme
     fig.update_layout(
-        margin={"r":0,"t":50,"l":0,"b":0},
+        margin={"r": 0, "t": 50, "l": 0, "b": 0},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="white")
+        font=dict(color="white"),
+        height=400,
+        autosize=False
     )
+
     return fig
 
-def get_frequency_figure(df):
-    fig = px.histogram(
-        df, 
-        x="Year", 
-        title="Eruption Frequency",
-        nbins=100,
-        template="plotly_dark"
+def get_country_choropleth(df, value_col, title, color_label):
+    # Aggregate data by country for the selected metric (count, deaths, damage…)
+    agg = df.groupby('Country', as_index=False)[value_col].sum()
+    # Custom continuous volcanic colormap (dark red → orange → magenta → violet)
+    # Designed to avoid white/yellow and emphasize bright volcanic tones
+    volcano_scale = [
+        (0.00, "#000000"),   # very dark base
+        (0.05, "#4b0000"),   # deep red
+        (0.10, "#7f0000"),   # darker red
+        (0.20, "#b00000"),   # intense red
+        (0.30, "#d50000"),   # bright red
+        (0.40, "#ff1400"),   # red-orange (flashy)
+        (0.55, "#ff3d00"),   # bright orange-red
+        (0.70, "#ff6d00"),   # orange incandescent
+        (0.85, "#ff8500"),   # bright orange
+        (0.93, "#d81b60"),   # magenta
+        (1.00, "#6a1b9a")    # deep violet
+    ]
+    # Build the choropleth map
+    fig = px.choropleth(
+        agg,
+        locations='Country',            # country name column
+        locationmode='country names',   # match names to world countries
+        color=value_col,                # metric used for color intensity
+        hover_name='Country',           # tooltip title
+        title=title,
+        labels={value_col: color_label}, # name of the color axis
+        template="plotly_dark",          # dark theme
+        color_continuous_scale=volcano_scale
     )
-    fig.update_traces(marker_color='#ff5722')
+    # Display country borders, coastlines, and land
+    fig.update_geos(
+        showcountries=True,
+        showcoastlines=True,
+        showland=True
+    )
+    # Transparent background to blend with the dashboard
     fig.update_layout(
-        xaxis_title="Year", 
-        yaxis_title="Count",
+        margin={"r": 0, "t": 50, "l": 0, "b": 0},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="white")
+        font=dict(color="white"),
+        height=400,
+        autosize=False
     )
+
     return fig
+
+def build_eruptions_per_year(df):
+    """
+    Build a yearly time series: index = Year, value = number of eruptions.
+    We drop missing or invalid (<= 0) years.
+    """
+    temp = df.dropna(subset=["Year"]).copy()
+    temp = temp[temp["Year"] > 0]
+
+    eruptions_per_year = (
+        temp
+        .groupby("Year")
+        .size()
+        .sort_index()
+    )
+
+    eruptions_per_year.index = eruptions_per_year.index.astype(int)
+    eruptions_per_year.name = "eruptions_per_year"
+
+    return eruptions_per_year
+
+def aggregate_eruptions(df, by="year"):
+    """
+    Aggregate eruptions by year or by century.
+    Returns a dataframe with two columns: period, count.
+    """
+    temp = df.dropna(subset=["Year"]).copy()
+    temp = temp[temp["Year"] > 0]  # keep AD years only
+
+    if by == "year":
+        grouped = (
+            temp.groupby("Year")
+            .size()
+            .reset_index(name="count")
+        )
+        grouped.rename(columns={"Year": "period"}, inplace=True)
+
+    elif by == "century":
+        # Century numbering: 1..n (e.g. 19 = 1801-1900)
+        temp["century"] = ((temp["Year"] - 1) // 100 + 1).astype(int)
+        grouped = (
+            temp.groupby("century")
+            .size()
+            .reset_index(name="count")
+        )
+        grouped.rename(columns={"century": "period"}, inplace=True)
+
+    else:
+        raise ValueError("by must be 'year' or 'century'")
+
+    return grouped
+
+def render_time_series(df, by="year"):
+    """
+    Build a time-series figure of eruption frequency over time
+    using Plotly Express, either per year or per century.
+    """
+    agg = aggregate_eruptions(df, by=by)
+
+    if by == "year":
+        x_label = "Year"
+        title = "Number of eruptions per year"
+    else:
+        x_label = "Century"
+        title = "Number of eruptions per century"
+
+    fig = px.line(
+        agg,
+        x="period",
+        y="count",
+        markers=True,
+        labels={"period": x_label, "count": "Number of eruptions"},
+        title=title,
+        color_discrete_sequence=['#ff5722']  # orange/red curve
+    )
+
+    fig.update_layout(
+        height=320,
+        autosize=False,
+        paper_bgcolor='rgba(0,0,0,0)',   # transparent to fit the dark card
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="white"),
+        xaxis=dict(
+            tickmode="auto",
+            tickangle=-45
+        ),
+        margin=dict(l=50, r=20, t=60, b=40)
+    )
+
+    fig.update_traces(
+        hovertemplate=f"{x_label}: %{{x}}<br>Eruptions: %{{y}}<extra></extra>"
+    )
+
+    return fig
+
+def render_temporal_series(df, mode="year"):
+    """
+    3 modes for the dashboard:
+    - 'year'    : time series per year (uses render_time_series)
+    - 'century' : time series per century (uses render_time_series)
+    - 'smooth'  : yearly series + 10-year moving average (Plotly)
+    """
+    # 1) Yearly series (raw)
+    if mode == "year":
+        return render_time_series(df, by="year")
+
+    # 2) Century series (raw)
+    if mode == "century":
+        return render_time_series(df, by="century")
+
+    # 3) Smoothed yearly series (10-year moving average)
+    if mode == "smooth":
+        per_year = build_eruptions_per_year(df)
+        smooth = per_year.rolling(window=10).mean()
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=per_year.index,
+            y=per_year.values,
+            mode="lines",
+            name="Raw yearly data",
+            line=dict(width=1, color="#888")   # grey, less dominant
+        ))
+        fig.add_trace(go.Scatter(
+            x=smooth.index,
+            y=smooth.values,
+            mode="lines",
+            name="10-year moving average",
+            line=dict(width=3, color="#ff5722")  # main orange/red curve
+        ))
+
+        fig.update_layout(
+            title="Smoothed eruptions per year (10-year moving average)",
+            xaxis_title="Year",
+            yaxis_title="Number of eruptions",
+            height=320,
+            autosize=False,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color="white"),
+            legend=dict(orientation="h", y=-0.2),
+            margin=dict(l=50, r=20, t=60, b=40)
+        )
+        return fig
 
 def get_impact_figure(df):
     top_deadly = df.nlargest(10, 'Deaths').sort_values('Deaths', ascending=True)
@@ -210,7 +416,7 @@ def get_with_and_without_indirect_deaths_by_type_figure(df, metric='mean'):
         y_label = 'Total Deaths (Secondary Hazards Only)'
         # Filter for events with Tsunami OR Earthquake
         # This changes the baseline ("Without") to be "Other Secondary Hazards" instead of "All Other Events"
-        df_to_use = df[df['Tsu'].notna() | df['Eq'].notna()].copy()
+        df_to_use = df[df['Tsunami'].notna() | df['Earthquake'].notna()].copy()
     else:
         metric_map = {
             'mean': 'mean',
@@ -230,15 +436,15 @@ def get_with_and_without_indirect_deaths_by_type_figure(df, metric='mean'):
     res = []
     
     # Tsunami Analysis
-    tsu_yes = df_to_use[df_to_use['Tsu'].notna()]['Total_Deaths'].agg(agg_func)
-    tsu_no = df_to_use[df_to_use['Tsu'].isna()]['Total_Deaths'].agg(agg_func)
+    tsu_yes = df_to_use[df_to_use['Tsunami'].notna()]['Total_Deaths'].agg(agg_func)
+    tsu_no = df_to_use[df_to_use['Tsunami'].isna()]['Total_Deaths'].agg(agg_func)
     
     res.append({'Hazard': 'Tsunami', 'Status': 'With', 'Value': tsu_yes})
     res.append({'Hazard': 'Tsunami', 'Status': 'Without', 'Value': tsu_no})
     
     # Earthquake Analysis
-    eq_yes = df_to_use[df_to_use['Eq'].notna()]['Total_Deaths'].agg(agg_func)
-    eq_no = df_to_use[df_to_use['Eq'].isna()]['Total_Deaths'].agg(agg_func)
+    eq_yes = df_to_use[df_to_use['Earthquake'].notna()]['Total_Deaths'].agg(agg_func)
+    eq_no = df_to_use[df_to_use['Earthquake'].isna()]['Total_Deaths'].agg(agg_func)
     
     res.append({'Hazard': 'Earthquake', 'Status': 'With', 'Value': eq_yes})
     res.append({'Hazard': 'Earthquake', 'Status': 'Without', 'Value': eq_no})
@@ -601,8 +807,43 @@ app.layout = html.Div([
 
         # Charts Row 1
         html.Div([
-            html.Div([dcc.Graph(id='map-graph')], style={**CARD_STYLE, 'flex': '2', 'margin-right': '20px'}),
-            html.Div([dcc.Graph(id='time-graph')], style={**CARD_STYLE, 'flex': '1'})
+        html.Div([
+            html.Div([
+                dcc.RadioItems(
+                    id='map-type-selector',
+                    options=['Scatter (Individual)', 'Choropleth (Country)'],
+                    value='Scatter (Individual)',
+                    labelStyle={'display': 'inline-block', 'margin-right': '10px'},
+                    style={'color': 'white', 'marginBottom': '5px'}
+                ),
+                dcc.Dropdown(
+                    id='map-metric-selector',
+                    options=[
+                        {'label': 'Total Deaths', 'value': 'Total_Deaths'},
+                        {'label': 'Total Damage', 'value': 'Total_Damage_Millions'},
+                        {'label': 'Frequency', 'value': 'Frequency'}
+                    ],
+                    value='Total_Deaths',
+                    placeholder="Select Metric",
+                    style={'color': 'black', 'width': '100%'} 
+                )
+            ], style={'marginBottom': '10px'}),
+            dcc.Graph(id='map-graph', style={'height': '400px'})
+        ], style={**CARD_STYLE, 'flex': '2', 'margin-right': '20px'}),
+            html.Div([
+                dcc.RadioItems(
+                    id='time-mode-selector',
+                    options=[
+                        {'label': 'Year', 'value': 'year'},
+                        {'label': 'Century', 'value': 'century'},
+                        {'label': 'Smooth (10y Avg)', 'value': 'smooth'}
+                    ],
+                    value='year',
+                    labelStyle={'display': 'inline-block', 'margin-right': '10px'},
+                    style={'color': 'white', 'marginBottom': '10px'}
+                ),
+                dcc.Graph(id='time-graph', style={'height': '320px'})
+            ], style={**CARD_STYLE, 'flex': '1'})
         ], style={'display': 'flex', 'margin-bottom': '20px'}),
 
         # Charts Row 2 - impact charts
@@ -734,12 +975,14 @@ app.layout = html.Div([
     [Input('country-dropdown', 'value'),
      Input('year-slider', 'value'),
      Input('volcano-type-selector', 'value'),
-     # ADDED INPUT: The selector for the VEI chart
      Input('vei-metric-selector', 'value'),
      Input('secondary-hazard-metric', 'value'),
-     Input('heatmap-normalization-selector', 'value')] 
+     Input('heatmap-normalization-selector', 'value'),
+     Input('map-type-selector', 'value'),
+     Input('map-metric-selector', 'value'),
+     Input('time-mode-selector', 'value')] 
 )
-def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric):
+def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_type, map_metric, time_mode):
     # Filter Data
     dff = df.copy()
     if selected_country:
@@ -757,8 +1000,18 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
     total_damage = f"${dff['Damage_Millions'].sum():,.0f}"
 
     # Figures
-    fig1 = get_map_figure(dff)
-    fig2 = get_frequency_figure(dff)
+    if map_type == 'Choropleth (Country)':
+        if map_metric == 'Frequency':
+            # Create a count column for aggregation
+            dff_map = dff.copy()
+            dff_map['Frequency'] = 1
+            fig1 = get_country_choropleth(dff_map, 'Frequency', "Eruption Frequency by Country", "Eruptions")
+        else:
+            label = "Deaths" if map_metric == 'Total_Deaths' else "Damage ($M)"
+            fig1 = get_country_choropleth(dff, map_metric, f"{label} by Country", label)
+    else:
+        fig1 = get_map_points(dff)
+    fig2 = render_temporal_series(dff, mode=time_mode)
     fig3 = get_impact_figure(dff)
     
     # MODIFIED: Pass the new selector value to the VEI function
