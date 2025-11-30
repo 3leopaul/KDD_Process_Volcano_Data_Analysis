@@ -1,6 +1,6 @@
 import pandas as pd
 import plotly.express as px
-from dash import Dash, dcc, html, Input, Output
+from dash import Dash, dcc, html, Input, Output, State, ctx
 import plotly.graph_objects as go
 import numpy as np
 
@@ -89,7 +89,7 @@ def get_map_points(df):
             "VEI": True,
             "VEI_Size": False
         },
-        title="Global Volcano Distribution (Bubble size = VEI)",
+        # title="Global Volcano Distribution (Bubble size = VEI)", # Removed title
         projection="natural earth", # projection style
         size_max=15,                # maximum bubble size
         template="plotly_dark"      # dark theme to match dashboard
@@ -126,9 +126,7 @@ def get_map_points(df):
         margin={"r": 0, "t": 50, "l": 0, "b": 0},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="white"),
-        height=400,
-        autosize=False
+        font=dict(color="white")
     )
 
     return fig
@@ -158,7 +156,7 @@ def get_country_choropleth(df, value_col, title, color_label):
         locationmode='country names',   # match names to world countries
         color=value_col,                # metric used for color intensity
         hover_name='Country',           # tooltip title
-        title=title,
+        # title=title,                  # Removed title
         labels={value_col: color_label}, # name of the color axis
         template="plotly_dark",          # dark theme
         color_continuous_scale=volcano_scale
@@ -174,12 +172,48 @@ def get_country_choropleth(df, value_col, title, color_label):
         margin={"r": 0, "t": 50, "l": 0, "b": 0},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="white"),
-        height=400,
-        autosize=False
+        font=dict(color="white")
     )
 
     return fig
+
+def create_expanding_buttons(group_id, options, default_value):
+    """
+    Creates a group of expanding buttons with a dcc.Store for state management.
+    """
+    buttons = []
+    for opt in options:
+        value = opt['value']
+        label = opt['label']
+        is_active = (value == default_value)
+        
+        style = {
+            'flex-grow': '3' if is_active else '1',
+            'background-color': '#ff5722' if is_active else '#333',
+            'color': 'white' if is_active else '#888',
+            'padding': '10px',
+            'margin-right': '5px',
+            'border-radius': '5px',
+            'cursor': 'pointer',
+            'text-align': 'center',
+            'overflow': 'hidden',
+            'white-space': 'nowrap',
+            'transition': 'all 0.5s ease'
+        }
+        
+        # We use the label as the text. 
+        # For inactive buttons, we might want a shorter version if provided, 
+        # but for now we'll rely on the flex-grow to hide/show text or just let it clip?
+        # The user requirement is "expend at the expense of the others to show the full name".
+        # So inactive ones are small.
+        
+        buttons.append(html.Div(label, id=f'btn-{group_id}-{value}', n_clicks=0, style=style))
+
+    return html.Div([
+        dcc.Store(id=f'{group_id}-store', data=default_value),
+        html.Div(buttons, style={'display': 'flex', 'width': '100%', 'justify-content': 'center', 'marginBottom': '10px'})
+    ])
+
 
 def build_eruptions_per_year(df):
     """
@@ -728,21 +762,9 @@ app = Dash(__name__)
 df = load_data()
 
 # Styles
-SIDEBAR_STYLE = {
-    "position": "fixed",
-    "top": 0,
-    "left": 0,
-    "bottom": 0,
-    "width": "16rem",
-    "padding": "2rem 1rem",
-    "background-color": "#111111",
-    "color": "white"
-}
-
+# Styles
 CONTENT_STYLE = {
-    "margin-left": "18rem",
-    "margin-right": "2rem",
-    "padding": "2rem 1rem",
+    "padding": "20px",
     "background-color": "#000000",
     "min-height": "100vh",
     "color": "white"
@@ -758,89 +780,126 @@ CARD_STYLE = {
 
 # Layout
 app.layout = html.Div([
-    # Sidebar
-    html.Div([
-        html.H2("Volcano Insights", style={'font-size': '20px', 'margin-bottom': '20px', 'color': '#ff5722'}),
-        html.Hr(style={'border-color': '#333'}),
-        html.P("Filters", style={'color': '#888'}),
-        
-        html.Label("Year Range", style={'margin-top': '20px'}),
-        dcc.RangeSlider(
-            id='year-slider',
-            min=df['Year'].min(),
-            max=df['Year'].max(),
-            value=[df['Year'].min(), df['Year'].max()],
-            marks={str(year): str(year) for year in range(int(df['Year'].min()), int(df['Year'].max()), 1000)},
-            tooltip={"placement": "bottom", "always_visible": True},
-            className="dark-slider"
-        ),
-        
-        html.Label("Country", style={'margin-top': '20px'}),
-        dcc.Dropdown(
-            id='country-dropdown',
-            options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())],
-            placeholder="All Countries",
-            style={'color': 'black'} # Dropdown text needs to be black to be visible on white bg of default dropdown
-        )
-    ], style=SIDEBAR_STYLE),
-
     # Main Content
     html.Div([
-        html.H1("Volcano Insights Dashboard", style={'margin-bottom': '5px'}),
-        html.P("Analyzing Significant Volcanic Eruptions", style={'color': '#888', 'margin-bottom': '30px'}),
+        # Header: Title + KPIs
+        html.Div([
+            # Title Section
+            html.Div([
+                html.H1("Volcano Insights Dashboard", style={'margin-bottom': '5px'}),
+                html.P("Analyzing Significant Volcanic Eruptions", style={'color': '#888', 'margin': '0'}),
+            ]),
+            
+            # KPIs (Horizontal)
+            html.Div([
+                html.Div([
+                    html.H4("Total Eruptions", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.H2(id='kpi-eruptions', style={'font-size': '24px', 'margin': '0'})
+                ], style={'margin-right': '40px', 'text-align': 'right'}),
+                html.Div([
+                    html.H4("Total Deaths", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.H2(id='kpi-deaths', style={'font-size': '24px', 'margin': '0'})
+                ], style={'margin-right': '40px', 'text-align': 'right'}),
+                html.Div([
+                    html.H4("Total Damage ($M)", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
+                    html.H2(id='kpi-damage', style={'font-size': '24px', 'margin': '0'})
+                ], style={'text-align': 'right'})
+            ], style={'display': 'flex', 'align-items': 'center'})
+        ], style={'display': 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-bottom': '30px'}),
 
-        # KPI Row
+        # Hero Section: Map (No KPI Overlay)
         html.Div([
-            html.Div([
-                html.H4("Total Eruptions", style={'color': '#888', 'font-size': '14px'}),
-                html.H2(id='kpi-eruptions', style={'font-size': '32px'})
-            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
-            html.Div([
-                html.H4("Total Deaths", style={'color': '#888', 'font-size': '14px'}),
-                html.H2(id='kpi-deaths', style={'font-size': '32px'})
-            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
-            html.Div([
-                html.H4("Total Damage ($M)", style={'color': '#888', 'font-size': '14px'}),
-                html.H2(id='kpi-damage', style={'font-size': '32px'})
-            ], style={**CARD_STYLE, 'flex': '1'})
-        ], style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '20px'}),
+            # Map (Full Height)
+            dcc.Graph(id='map-graph', style={'height': '100%', 'width': '100%'}),
 
-        # Charts Row 1
-        html.Div([
-        html.Div([
+            # Map Controls (Buttons)
             html.Div([
-                dcc.RadioItems(
-                    id='map-type-selector',
-                    options=['Scatter (Individual)', 'Choropleth (Country)'],
-                    value='Scatter (Individual)',
-                    labelStyle={'display': 'inline-block', 'margin-right': '10px'},
-                    style={'color': 'white', 'marginBottom': '5px'}
-                ),
-                dcc.Dropdown(
-                    id='map-metric-selector',
-                    options=[
-                        {'label': 'Total Deaths', 'value': 'Total_Deaths'},
-                        {'label': 'Total Damage', 'value': 'Total_Damage_Millions'},
-                        {'label': 'Frequency', 'value': 'Frequency'}
-                    ],
-                    value='Total_Deaths',
-                    placeholder="Select Metric",
-                    style={'color': 'black', 'width': '100%'} 
-                )
-            ], style={'marginBottom': '10px'}),
-            dcc.Graph(id='map-graph', style={'height': '400px'})
-        ], style={**CARD_STYLE, 'flex': '2', 'margin-right': '20px'}),
+                dcc.Store(id='map-mode-store', data='distribution'),
+                html.Div([
+                    html.Div("Global Volcano Distribution", id='btn-distribution', n_clicks=0, style={
+                        'flex-grow': '3', 'background-color': '#ff5722', 'color': 'white', 
+                        'padding': '10px', 'margin-right': '5px', 'border-radius': '5px', 
+                        'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 'white-space': 'nowrap', 'transition': 'all 0.5s ease'
+                    }),
+                    html.Div("Frequency", id='btn-frequency', n_clicks=0, style={
+                        'flex-grow': '1', 'background-color': '#333', 'color': '#888', 
+                        'padding': '10px', 'margin-right': '5px', 'border-radius': '5px', 
+                        'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 'white-space': 'nowrap', 'transition': 'all 0.5s ease'
+                    }),
+                    html.Div("Total Deaths", id='btn-deaths', n_clicks=0, style={
+                        'flex-grow': '1', 'background-color': '#333', 'color': '#888', 
+                        'padding': '10px', 'margin-right': '5px', 'border-radius': '5px', 
+                        'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 'white-space': 'nowrap', 'transition': 'all 0.5s ease'
+                    }),
+                    html.Div("Total Damage", id='btn-damage', n_clicks=0, style={
+                        'flex-grow': '1', 'background-color': '#333', 'color': '#888', 
+                        'padding': '10px', 'border-radius': '5px', 
+                        'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 'white-space': 'nowrap', 'transition': 'all 0.5s ease'
+                    })
+                ], style={'display': 'flex', 'width': '100%', 'justify-content': 'center'})
+            ], style={
+                'position': 'absolute',
+                'top': '20px',
+                'left': '50%',
+                'transform': 'translateX(-50%)',
+                'z-index': '1000',
+                'width': '600px'
+            }),
+
+            # Filter Overlay (Top Right)
             html.Div([
-                dcc.RadioItems(
-                    id='time-mode-selector',
-                    options=[
+                html.Div([
+                    html.Label("Year Range", style={'color': '#888', 'margin-right': '10px', 'white-space': 'nowrap'}),
+                    dcc.RangeSlider(
+                        id='year-slider',
+                        min=df['Year'].min(),
+                        max=2025,
+                        value=[df['Year'].min(), 2025],
+                        marks={**{str(year): str(year) for year in range(int(df['Year'].min()), 2020, 1000)}, '2025': '2025'},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                        className="dark-slider"
+                    ),
+                ], style={'width': '300px', 'margin-bottom': '10px'}),
+                
+                html.Div([
+                    dcc.Dropdown(
+                        id='country-dropdown',
+                        options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())],
+                        placeholder="All Countries",
+                        style={'color': 'black', 'width': '100%'}
+                    )
+                ], style={'width': '200px'})
+            ], style={
+                'position': 'fixed',
+                'top': '20px',
+                'left': '20px',
+                'background-color': 'rgba(30, 30, 30, 0.9)',
+                'padding': '15px',
+                'border-radius': '10px',
+                'box-shadow': '0 4px 6px rgba(0,0,0,0.3)',
+                'z-index': '1000',
+                'display': 'flex',
+                'flex-direction': 'column',
+                'align-items': 'flex-start'
+            })
+
+        ], style={'position': 'relative', 'height': '85vh', 'margin-bottom': '40px', 'border-radius': '10px', 'overflow': 'hidden'}),
+
+        ], style={'position': 'relative', 'height': '85vh', 'margin-bottom': '40px', 'border-radius': '10px', 'overflow': 'hidden'}),
+
+        # Scrollable Content Starts Here
+        
+        # Time Series Row
+        html.Div([
+             html.Div([
+                create_expanding_buttons(
+                    'time',
+                    [
                         {'label': 'Year', 'value': 'year'},
                         {'label': 'Century', 'value': 'century'},
                         {'label': 'Smooth (10y Avg)', 'value': 'smooth'}
                     ],
-                    value='year',
-                    labelStyle={'display': 'inline-block', 'margin-right': '10px'},
-                    style={'color': 'white', 'marginBottom': '10px'}
+                    'year'
                 ),
                 dcc.Graph(id='time-graph', style={'height': '320px'})
             ], style={**CARD_STYLE, 'flex': '1'})
@@ -857,17 +916,15 @@ app.layout = html.Div([
             html.Div([
                 # New Control: Radio Buttons for VEI Metric
                 html.Div([
-                    dcc.RadioItems(
-                        id='vei-metric-selector',
-                        options=[
-                            {'label': ' Median Deaths', 'value': 'median'},
-                            {'label': ' Mean Deaths', 'value': 'mean'},
-                            {'label': ' Total Deaths', 'value': 'sum'},
-                            {'label': ' Total Eruptions', 'value': 'count'}
+                    create_expanding_buttons(
+                        'vei',
+                        [
+                            {'label': 'Median Deaths', 'value': 'median'},
+                            {'label': 'Mean Deaths', 'value': 'mean'},
+                            {'label': 'Total Deaths', 'value': 'sum'},
+                            {'label': 'Total Eruptions', 'value': 'count'}
                         ],
-                        value='median', # Default view
-                        labelStyle={'display': 'inline-block', 'margin-right': '20px'},
-                        style={'color': 'white', 'marginBottom': '10px'}
+                        'median'
                     ),
                 ], style={'textAlign': 'center'}),
                 
@@ -881,17 +938,15 @@ app.layout = html.Div([
         html.Div([
                 html.Div([
                     html.Div([
-                        dcc.RadioItems(
-                            id='secondary-hazard-metric',
-                            options=[
-                                {'label': ' Median Deaths', 'value': 'median'},
-                                {'label': ' Mean Deaths', 'value': 'mean'},
-                                {'label': ' Total Deaths (All Eruptions)', 'value': 'sum'},
-                                {'label': ' Total Deaths (Secondary Hazards Only)', 'value': 'sum_secondary'}
+                        create_expanding_buttons(
+                            'secondary',
+                            [
+                                {'label': 'Median Deaths', 'value': 'median'},
+                                {'label': 'Mean Deaths', 'value': 'mean'},
+                                {'label': 'Total Deaths (All)', 'value': 'sum'},
+                                {'label': 'Total Deaths (Secondary)', 'value': 'sum_secondary'}
                             ],
-                            value='mean',
-                            labelStyle={'display': 'inline-block', 'margin-right': '20px'},
-                            style={'color': 'white', 'marginBottom': '10px'}
+                            'mean'
                         ),
                     ], style={'textAlign': 'center'}),
                     dcc.Graph(id='with_and_without_indirect_deaths_by_type')
@@ -901,15 +956,13 @@ app.layout = html.Div([
                 html.Div([
                     # New Control: Radio Buttons for Chart Type
                     html.Div([
-                        dcc.RadioItems(
-                            id='volcano-type-selector',
-                            options=[
-                                {'label': ' Treemap View', 'value': 'treemap'},
-                                {'label': ' Bar Plot View', 'value': 'bar'}
+                        create_expanding_buttons(
+                            'type',
+                            [
+                                {'label': 'Treemap View', 'value': 'treemap'},
+                                {'label': 'Bar Plot View', 'value': 'bar'}
                             ],
-                            value='treemap', # Default view
-                            labelStyle={'display': 'inline-block', 'margin-right': '20px'},
-                            style={'color': 'white', 'marginBottom': '10px'}
+                            'treemap'
                         ),
                     ], style={'textAlign': 'center'}), 
 
@@ -928,15 +981,13 @@ app.layout = html.Div([
         html.Div([
             html.Div([
                 html.Div([
-                    dcc.RadioItems(
-                        id='heatmap-normalization-selector',
-                        options=[
-                            {'label': ' Count', 'value': 'count'},
-                            {'label': ' Risk Percentage', 'value': 'percent'}
+                    create_expanding_buttons(
+                        'heatmap',
+                        [
+                            {'label': 'Count', 'value': 'count'},
+                            {'label': 'Risk Percentage', 'value': 'percent'}
                         ],
-                        value='count',
-                        labelStyle={'display': 'inline-block', 'margin-right': '20px'},
-                        style={'color': 'white', 'marginBottom': '10px', 'textAlign': 'center'}
+                        'count'
                     )
                 ]),
                 # --- THE FIX IS HERE ---
@@ -955,7 +1006,149 @@ app.layout = html.Div([
         ], style={'display': 'flex'}),
 
     ], style=CONTENT_STYLE)
-],style={'backgroundColor': '#000000', 'minHeight': '100vh'})
+
+@app.callback(
+    [Output('map-mode-store', 'data'),
+     Output('btn-distribution', 'style'),
+     Output('btn-frequency', 'style'),
+     Output('btn-deaths', 'style'),
+     Output('btn-damage', 'style'),
+     Output('btn-distribution', 'children'),
+     Output('btn-frequency', 'children'),
+     Output('btn-deaths', 'children'),
+     Output('btn-damage', 'children')],
+    [Input('btn-distribution', 'n_clicks'),
+     Input('btn-frequency', 'n_clicks'),
+     Input('btn-deaths', 'n_clicks'),
+     Input('btn-damage', 'n_clicks')],
+    [State('btn-distribution', 'style'),
+     State('btn-frequency', 'style'),
+     State('btn-deaths', 'style'),
+     State('btn-damage', 'style')]
+)
+def update_map_mode(n1, n2, n3, n4, s1, s2, s3, s4):
+    ctx_msg = ctx.triggered_id
+    if not ctx_msg:
+        return 'distribution', s1, s2, s3, s4, "Global Volcano Distribution", "Frequency", "Total Deaths", "Total Damage"
+
+    mode_map = {
+        'btn-distribution': 'distribution',
+        'btn-frequency': 'frequency',
+        'btn-deaths': 'deaths',
+        'btn-damage': 'damage'
+    }
+    
+    new_mode = mode_map.get(ctx_msg, 'distribution')
+    
+    # Base style for all buttons
+    base_style = {
+        'padding': '10px', 'margin-right': '5px', 'border-radius': '5px', 
+        'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 
+        'white-space': 'nowrap', 'transition': 'all 0.5s ease'
+    }
+    
+    # Define styles and text for each state
+    styles = []
+    texts = []
+    
+    buttons = ['btn-distribution', 'btn-frequency', 'btn-deaths', 'btn-damage']
+    full_texts = ["Global Volcano Distribution", "Eruption Frequency by Country", "Total Deaths by Country", "Total Damage by Country"]
+    short_texts = ["Distribution", "Frequency", "Deaths", "Damage"]
+    
+    for i, btn in enumerate(buttons):
+        style = base_style.copy()
+        if btn == ctx_msg:
+            style['flex-grow'] = '3'
+            style['background-color'] = '#ff5722'
+            style['color'] = 'white'
+            texts.append(full_texts[i])
+        else:
+            style['flex-grow'] = '1'
+            style['background-color'] = '#333'
+            style['color'] = '#888'
+            texts.append(short_texts[i])
+        styles.append(style)
+        
+    return new_mode, styles[0], styles[1], styles[2], styles[3], texts[0], texts[1], texts[2], texts[3]
+
+def create_button_callback(group_id, options):
+    """
+    Creates a callback for a group of expanding buttons.
+    """
+    inputs = [Input(f'btn-{group_id}-{opt["value"]}', 'n_clicks') for opt in options]
+    states = [State(f'btn-{group_id}-{opt["value"]}', 'style') for opt in options]
+    
+    outputs = [Output(f'{group_id}-store', 'data')] + \
+              [Output(f'btn-{group_id}-{opt["value"]}', 'style') for opt in options]
+    
+    @app.callback(outputs, inputs, states)
+    def update_buttons(*args):
+        n_clicks = args[:len(options)]
+        styles = args[len(options):]
+        
+        ctx_msg = ctx.triggered_id
+        default_value = options[0]['value']
+        
+        if not ctx_msg:
+            # On initial load, just return the current state (or default)
+            # But wait, we need to return the store data and styles.
+            # If we don't know the current store data, we default to the first option.
+            # Actually, the layout sets the initial style.
+            # We can just return the default value and current styles.
+            return default_value, *styles
+
+        # Determine which button was clicked
+        clicked_value = default_value
+        for opt in options:
+            if f'btn-{group_id}-{opt["value"]}' == ctx_msg:
+                clicked_value = opt['value']
+                break
+        
+        new_styles = []
+        for i, opt in enumerate(options):
+            style = styles[i].copy()
+            if opt['value'] == clicked_value:
+                style['flex-grow'] = '3'
+                style['background-color'] = '#ff5722'
+                style['color'] = 'white'
+            else:
+                style['flex-grow'] = '1'
+                style['background-color'] = '#333'
+                style['color'] = '#888'
+            new_styles.append(style)
+            
+        return clicked_value, *new_styles
+
+# Create callbacks for each group
+create_button_callback('time', [
+    {'label': 'Year', 'value': 'year'},
+    {'label': 'Century', 'value': 'century'},
+    {'label': 'Smooth (10y Avg)', 'value': 'smooth'}
+])
+
+create_button_callback('vei', [
+    {'label': 'Median Deaths', 'value': 'median'},
+    {'label': 'Mean Deaths', 'value': 'mean'},
+    {'label': 'Total Deaths', 'value': 'sum'},
+    {'label': 'Total Eruptions', 'value': 'count'}
+])
+
+create_button_callback('secondary', [
+    {'label': 'Median Deaths', 'value': 'median'},
+    {'label': 'Mean Deaths', 'value': 'mean'},
+    {'label': 'Total Deaths (All)', 'value': 'sum'},
+    {'label': 'Total Deaths (Secondary)', 'value': 'sum_secondary'}
+])
+
+create_button_callback('type', [
+    {'label': 'Treemap View', 'value': 'treemap'},
+    {'label': 'Bar Plot View', 'value': 'bar'}
+])
+
+create_button_callback('heatmap', [
+    {'label': 'Count', 'value': 'count'},
+    {'label': 'Risk Percentage', 'value': 'percent'}
+])
 
 @app.callback(
     [Output('map-graph', 'figure'),
@@ -974,15 +1167,14 @@ app.layout = html.Div([
      Output('kpi-damage', 'children')],
     [Input('country-dropdown', 'value'),
      Input('year-slider', 'value'),
-     Input('volcano-type-selector', 'value'),
-     Input('vei-metric-selector', 'value'),
-     Input('secondary-hazard-metric', 'value'),
-     Input('heatmap-normalization-selector', 'value'),
-     Input('map-type-selector', 'value'),
-     Input('map-metric-selector', 'value'),
-     Input('time-mode-selector', 'value')] 
+     Input('type-store', 'data'),
+     Input('vei-store', 'data'),
+     Input('secondary-store', 'data'),
+     Input('heatmap-store', 'data'),
+     Input('map-mode-store', 'data'),
+     Input('time-store', 'data')] 
 )
-def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_type, map_metric, time_mode):
+def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode):
     # Filter Data
     dff = df.copy()
     if selected_country:
@@ -1000,17 +1192,20 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
     total_damage = f"${dff['Damage_Millions'].sum():,.0f}"
 
     # Figures
-    if map_type == 'Choropleth (Country)':
-        if map_metric == 'Frequency':
-            # Create a count column for aggregation
-            dff_map = dff.copy()
-            dff_map['Frequency'] = 1
-            fig1 = get_country_choropleth(dff_map, 'Frequency', "Eruption Frequency by Country", "Eruptions")
-        else:
-            label = "Deaths" if map_metric == 'Total_Deaths' else "Damage ($M)"
-            fig1 = get_country_choropleth(dff, map_metric, f"{label} by Country", label)
-    else:
+    if map_mode == 'distribution':
         fig1 = get_map_points(dff)
+    elif map_mode == 'frequency':
+        # Create a count column for aggregation
+        dff_map = dff.copy()
+        dff_map['Frequency'] = 1
+        fig1 = get_country_choropleth(dff_map, 'Frequency', "Eruption Frequency by Country", "Eruptions")
+    elif map_mode == 'deaths':
+        fig1 = get_country_choropleth(dff, 'Total_Deaths', "Total Deaths by Country", "Deaths")
+    elif map_mode == 'damage':
+        fig1 = get_country_choropleth(dff, 'Total_Damage_Millions', "Total Damage by Country", "Damage ($M)")
+    else:
+        fig1 = get_map_points(dff) # Fallback
+
     fig2 = render_temporal_series(dff, mode=time_mode)
     fig3 = get_impact_figure(dff)
     
@@ -1032,4 +1227,8 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
 if __name__ == '__main__':
     print("Launching Dashboard...")
     print("Dashboard launched at: http://127.0.0.1:8051")
-    app.run(host='127.0.0.1', port=8051, debug=True)
+    app.run( # Runs the dashboard
+        host='127.0.0.1', # Localhost adress on which the dashboard is running
+        port=8051, # Port number on which the dashboard is running
+        debug=False, # Get's rid of debug console (white widget at bottom right of screen)
+        )
