@@ -1,0 +1,92 @@
+/* Range Slider Customization */
+.rc-slider-rail {
+    background-color: #555 !important;
+}
+
+.rc-slider-track {
+    background-color: #ff5722 !important;
+}
+
+.rc-slider-handle {
+    border-color: #ff5722 !important;
+    background-color: #ff5722 !important;
+    opacity: 1 !important;
+}
+
+.rc-slider-handle:hover {
+    border-color: #e64a19 !important;
+}
+
+.rc-slider-handle:active {
+    box-shadow: 0 0 5px #ff5722 !important;
+}
+
+.rc-slider-mark-text {
+    color: #888 !important;
+}
+
+.rc-slider-mark-text-active {
+    color: #fff !important;
+}
+
+.rc-slider-tooltip-inner {
+    background-color: #ff5722 !important;
+    color: white !important;
+}
+
+.rc-slider-tooltip-arrow {
+    border-top-color: #ff5722 !important;
+}
+
+/* Dropdown Customization (React-Select) */
+.Select-control {
+    background-color: #333 !important;
+    border: 1px solid #555 !important;
+    border-radius: 5px !important;
+}
+
+.Select-value-label {
+    color: white !important;
+}
+
+.Select-placeholder {
+    color: #aaa !important;
+}
+
+.Select-input>input {
+    color: white !important;
+}
+
+.Select-menu-outer {
+    background-color: #333 !important;
+    border: 1px solid #555 !important;
+    color: white !important;
+}
+
+.Select-option {
+    background-color: #333 !important;
+    color: white !important;
+}
+
+.Select-option.is-focused {
+    background-color: #444 !important;
+}
+
+.Select-option.is-selected {
+    background-color: #ff5722 !important;
+    color: white !important;
+}
+
+.Select-arrow-zone {
+    color: white !important;
+}
+
+.Select-clear-zone {
+    color: white !important;
+}
+
+/* Remove blue focus outline */
+.Select.is-focused>.Select-control {
+    border-color: #ff5722 !important;
+    box-shadow: none !important;
+}

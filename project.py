@@ -499,10 +499,10 @@ def get_with_and_without_indirect_deaths_by_type_figure(df, metric='mean'):
     )
     return fig
 
-def get_volcano_type_figure(df, chart_type='treemap'):
+def get_volcano_type_figure(df, scale='log', metric='total'):
     """
-    Indicator 4: Volcanic Type vs Impact (Total Deaths).
-    Allows the user to switch between a Treemap and a Bar Plot.
+    Indicator 4: Volcanic Type vs Impact.
+    Displays Total Deaths or Deaths per Eruption by Volcano Type with selectable scale.
     """
     # 1. Prepare Data
     if df.empty:
@@ -511,8 +511,18 @@ def get_volcano_type_figure(df, chart_type='treemap'):
         fig.add_annotation(text="No Data Available", x=0.5, y=0.5, showarrow=False, font=dict(color="white"))
         return fig
         
-    df_type = df.groupby('Type')['Total_Deaths'].sum().reset_index()
-    # Ensure there are fatalities to plot
+    # Group by Type and calculate sums and counts
+    df_type = df.groupby('Type').agg(
+        Total_Deaths=('Total_Deaths', 'sum'),
+        Count=('Name', 'count')
+    ).reset_index()
+    
+    # Calculate Rate
+    df_type['Deaths_per_Eruption'] = df_type['Total_Deaths'] / df_type['Count']
+    
+    # Filter out 0s for the plot to avoid log scale issues or clutter
+    # For 'total', we filter Total_Deaths > 0
+    # For 'rate', we also want Total_Deaths > 0 (implies rate > 0)
     df_type = df_type[df_type['Total_Deaths'] > 0] 
     
     if df_type.empty:
@@ -520,46 +530,42 @@ def get_volcano_type_figure(df, chart_type='treemap'):
         fig.add_annotation(text="No Fatalities recorded in selection", x=0.5, y=0.5, showarrow=False, font=dict(color="white"))
         return fig
 
-    # 2. Generate Figure based on type
-    title_text = "Total Deaths by Volcano Type"
+    # 2. Generate Figure
+    is_log = (scale == 'log')
     
-    if chart_type == 'bar':
-        # Generate Horizontal Bar Plot (Easier to read long type names)
-        fig = px.bar(
-            df_type.sort_values('Total_Deaths', ascending=True), # Sort ascending for better visual hierarchy
-            x='Total_Deaths', 
-            y='Type', 
-            orientation='h',
-            title=title_text,
-            template="plotly_dark"
-        )
-        fig.update_traces(marker_color='#ff5722')
-        fig.update_xaxes(title_text="Total Deaths")
-        fig.update_yaxes(title_text="")
-        
-    else: # Default is 'treemap'
-        fig = px.treemap(
-            df_type, path=['Type'], values='Total_Deaths',
-            title=title_text,
-            template="plotly_dark",
-            color_discrete_sequence=px.colors.qualitative.Bold
-        )
-        # Treemap needs specific styling to hide labels
-        fig.update_layout(uniformtext=dict(minsize=10, mode='hide')) 
+    if metric == 'rate':
+        x_col = 'Deaths_per_Eruption'
+        title_text = "Deaths per Eruption by Volcano Type"
+        x_axis_label = f"Deaths per Eruption ({'Log' if is_log else 'Linear'} Scale)"
+        hover_template = "Type: %{y}<br>Deaths/Eruption: %{x:.2f}<extra></extra>"
+    else:
+        x_col = 'Total_Deaths'
+        title_text = "Total Deaths by Volcano Type"
+        x_axis_label = f"Total Deaths ({'Log' if is_log else 'Linear'} Scale)"
+        hover_template = "Type: %{y}<br>Total Deaths: %{x}<extra></extra>"
+
+    
+    # Generate Horizontal Bar Plot
+    fig = px.bar(
+        df_type.sort_values(x_col, ascending=True), 
+        x=x_col, 
+        y='Type', 
+        orientation='h',
+        title=title_text,
+        template="plotly_dark",
+        log_x=is_log
+    )
+    fig.update_traces(marker_color='#ff5722', hovertemplate=hover_template)
+    fig.update_xaxes(title_text=x_axis_label)
+    fig.update_yaxes(title_text="")
     
     # 3. Apply Common Styling (to match dashboard theme)
     fig.update_layout(
-        # Set height to stop infinite resizing loop if a row flexes height
-        # Set a fixed height that looks good in the 2x2 grid layout
         height=400, 
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)', 
         font=dict(color="white"),
         margin=dict(l=10, r=10, t=40, b=10),
-        
-        # *** CRITICAL FIX FOR RESIZING LOOP ***
-        # Explicitly set autosize to False and let Dash manage the dimensions
-        # This often stops the resize-recalculate-resize loop
         autosize=False 
     )
     
@@ -780,14 +786,18 @@ CARD_STYLE = {
 
 # Layout
 app.layout = html.Div([
+    # Custom CSS for Dark Theme Components (Loaded from assets/custom.css)
+
+
     # Main Content
     html.Div([
+        # Header: Title + KPIs
         # Header: Title + KPIs
         html.Div([
             # Title Section
             html.Div([
-                html.H1("Volcano Insights Dashboard", style={'margin-bottom': '5px'}),
-                html.P("Analyzing Significant Volcanic Eruptions", style={'color': '#888', 'margin': '0'}),
+                html.H1("Volcano Insights Dashboard", style={'margin-bottom': '5px', 'text-align': 'center'}),
+                html.P("Analyzing Significant Volcanic Eruptions", style={'color': '#888', 'margin': '0', 'text-align': 'center'}),
             ]),
             
             # KPIs (Horizontal)
@@ -804,8 +814,8 @@ app.layout = html.Div([
                     html.H4("Total Damage ($M)", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
                     html.H2(id='kpi-damage', style={'font-size': '24px', 'margin': '0'})
                 ], style={'text-align': 'right'})
-            ], style={'display': 'flex', 'align-items': 'center'})
-        ], style={'display': 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-bottom': '30px'}),
+            ], style={'display': 'flex', 'align-items': 'center', 'position': 'absolute', 'right': '0'})
+        ], style={'display': 'flex', 'justify-content': 'center', 'align-items': 'center', 'margin-bottom': '30px', 'position': 'relative'}),
 
         # Hero Section: Map (No KPI Overlay)
         html.Div([
@@ -866,7 +876,7 @@ app.layout = html.Div([
                         id='country-dropdown',
                         options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())],
                         placeholder="All Countries",
-                        style={'color': 'black', 'width': '100%'}
+                        style={'width': '100%'}
                     )
                 ], style={'width': '200px'})
             ], style={
@@ -954,17 +964,29 @@ app.layout = html.Div([
                 
                 # --- START OF CHANGE ---
                 html.Div([
-                    # New Control: Radio Buttons for Chart Type
+                    # Metric Control
                     html.Div([
                         create_expanding_buttons(
-                            'type',
+                            'type_metric',
                             [
-                                {'label': 'Treemap View', 'value': 'treemap'},
-                                {'label': 'Bar Plot View', 'value': 'bar'}
+                                {'label': 'Total Deaths', 'value': 'total'},
+                                {'label': 'Deaths/Eruption', 'value': 'rate'}
                             ],
-                            'treemap'
+                            'total'
                         ),
-                    ], style={'textAlign': 'center'}), 
+                    ], style={'textAlign': 'center'}),
+                    
+                    # Scale Control
+                    html.Div([
+                        create_expanding_buttons(
+                            'type_scale',
+                            [
+                                {'label': 'Log Scale', 'value': 'log'},
+                                {'label': 'Linear Scale', 'value': 'linear'}
+                            ],
+                            'log'
+                        ),
+                    ], style={'textAlign': 'center'}),
 
                     # Chart Container
                     dcc.Graph(id='volcano_type'),
@@ -1140,10 +1162,17 @@ create_button_callback('secondary', [
     {'label': 'Total Deaths (Secondary)', 'value': 'sum_secondary'}
 ])
 
-create_button_callback('type', [
-    {'label': 'Treemap View', 'value': 'treemap'},
-    {'label': 'Bar Plot View', 'value': 'bar'}
+create_button_callback('type_scale', [
+    {'label': 'Log Scale', 'value': 'log'},
+    {'label': 'Linear Scale', 'value': 'linear'}
 ])
+
+create_button_callback('type_metric', [
+    {'label': 'Total Deaths', 'value': 'total'},
+    {'label': 'Deaths/Eruption', 'value': 'rate'}
+])
+
+
 
 create_button_callback('heatmap', [
     {'label': 'Count', 'value': 'count'},
@@ -1167,14 +1196,15 @@ create_button_callback('heatmap', [
      Output('kpi-damage', 'children')],
     [Input('country-dropdown', 'value'),
      Input('year-slider', 'value'),
-     Input('type-store', 'data'),
      Input('vei-store', 'data'),
      Input('secondary-store', 'data'),
      Input('heatmap-store', 'data'),
      Input('map-mode-store', 'data'),
-     Input('time-store', 'data')] 
+     Input('time-store', 'data'),
+     Input('type_scale-store', 'data'),
+     Input('type_metric-store', 'data')] 
 )
-def update_dashboard(selected_country, year_range, selected_chart_type, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode):
+def update_dashboard(selected_country, year_range, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode, type_scale, type_metric):
     # Filter Data
     dff = df.copy()
     if selected_country:
@@ -1214,7 +1244,7 @@ def update_dashboard(selected_country, year_range, selected_chart_type, selected
     
     fig_top_countries = get_top_countries_by_historical_deaths_figure(dff)
     fig_indirect = get_with_and_without_indirect_deaths_by_type_figure(dff, selected_secondary_metric)
-    fig_volcano_type = get_volcano_type_figure(dff, selected_chart_type)
+    fig_volcano_type = get_volcano_type_figure(dff, type_scale, type_metric)
     
     # New Graphs
     fig_vei_deaths = volcano_type_vs_hasard_heatmap(dff, normalize=(selected_heatmap_metric == 'percent'))
