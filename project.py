@@ -598,49 +598,79 @@ def get_with_and_without_indirect_deaths_by_type_figure(df, metric='mean'):
     # Compares lethality of events with vs. without Tsunami/Earthquake
     
     # Define aggregation logic
-    if metric == 'sum_secondary':
-        agg_func = 'sum'
-        y_label = 'Total Deaths (Secondary Hazards Only)'
-        # Filter for events with Tsunami OR Earthquake
-        # This changes the baseline ("Without") to be "Other Secondary Hazards" instead of "All Other Events"
-        df_to_use = df[df['Tsunami'].notna() | df['Earthquake'].notna()].copy()
-    else:
-        metric_map = {
-            'mean': 'mean',
-            'median': 'median',
-            'sum': 'sum'
-        }
-        agg_func = metric_map.get(metric, 'mean')
-        df_to_use = df.copy()
-        
-        label_map = {
-            'mean': 'Average Deaths',
-            'median': 'Median Deaths',
-            'sum': 'Total Deaths (All Eruptions)'
-        }
-        y_label = label_map.get(metric, 'Average Deaths')
-
+    # Check if we are analyzing Agents or Secondary Hazards
+    is_agent_analysis = metric.endswith('_agents')
+    
+    # Clean metric name for mapping
+    base_metric = metric.replace('_agents', '')
+    
+    metric_map = {
+        'mean': 'mean',
+        'median': 'median',
+        'sum': 'sum'
+    }
+    agg_func = metric_map.get(base_metric, 'mean')
+    df_to_use = df.copy()
+    
+    label_map = {
+        'mean': 'Average Deaths',
+        'median': 'Median Deaths',
+        'sum': 'Total Deaths (All Eruptions)'
+    }
+    y_label = label_map.get(base_metric, 'Average Deaths')
+    
     res = []
-    
-    # Tsunami Analysis
-    tsu_yes = df_to_use[df_to_use['Tsunami'].notna()]['Total_Deaths'].agg(agg_func)
-    tsu_no = df_to_use[df_to_use['Tsunami'].isna()]['Total_Deaths'].agg(agg_func)
-    
-    res.append({'Hazard': 'Tsunami', 'Status': 'With', 'Value': tsu_yes})
-    res.append({'Hazard': 'Tsunami', 'Status': 'Without', 'Value': tsu_no})
-    
-    # Earthquake Analysis
-    eq_yes = df_to_use[df_to_use['Earthquake'].notna()]['Total_Deaths'].agg(agg_func)
-    eq_no = df_to_use[df_to_use['Earthquake'].isna()]['Total_Deaths'].agg(agg_func)
-    
-    res.append({'Hazard': 'Earthquake', 'Status': 'With', 'Value': eq_yes})
-    res.append({'Hazard': 'Earthquake', 'Status': 'Without', 'Value': eq_no})
-    
+
+    if is_agent_analysis:
+        # Analyze All Agents
+        agents_to_analyze = [
+            ('P', 'Pyroclastic Flow'),
+            ('M', 'Mudflow (Lahar)'),
+            ('T', 'Tephra (Ash)'),
+            ('W', 'Waves (Tsunami)'),
+            ('L', 'Lava Flow'),
+            ('G', 'Gas'),
+            ('I', 'Indirect'),
+            ('A', 'Avalanche'),
+            ('F', 'Floods'),
+            ('S', 'Seismic'),
+            ('E', 'Electrical'),
+            ('m', 'Mudflow (Lahar) (m)'),
+            ('?', 'Unknown')
+        ]
+        title_suffix = "(Agents)"
+        
+        for code, name in agents_to_analyze:
+            # Check if Agent column contains the code
+            mask = df_to_use['Agent'].astype(str).apply(lambda x: code in [a.strip() for a in x.split(',')])
+            
+            val_yes = df_to_use[mask]['Total_Deaths'].agg(agg_func)
+            val_no = df_to_use[~mask]['Total_Deaths'].agg(agg_func)
+            
+            res.append({'Hazard': name, 'Status': 'With', 'Value': val_yes})
+            res.append({'Hazard': name, 'Status': 'Without', 'Value': val_no})
+            
+    else:
+        # Analyze Secondary Hazards: Tsunami, Earthquake
+        title_suffix = "(Secondary Hazards)"
+        
+        # Tsunami Analysis
+        tsu_yes = df_to_use[df_to_use['Tsunami'].notna()]['Total_Deaths'].agg(agg_func)
+        tsu_no = df_to_use[df_to_use['Tsunami'].isna()]['Total_Deaths'].agg(agg_func)
+        res.append({'Hazard': 'Tsunami', 'Status': 'With', 'Value': tsu_yes})
+        res.append({'Hazard': 'Tsunami', 'Status': 'Without', 'Value': tsu_no})
+
+        # Earthquake Analysis
+        eq_yes = df_to_use[df_to_use['Earthquake'].notna()]['Total_Deaths'].agg(agg_func)
+        eq_no = df_to_use[df_to_use['Earthquake'].isna()]['Total_Deaths'].agg(agg_func)
+        res.append({'Hazard': 'Earthquake', 'Status': 'With', 'Value': eq_yes})
+        res.append({'Hazard': 'Earthquake', 'Status': 'Without', 'Value': eq_no})
+
     df_hazards = pd.DataFrame(res)
     
     fig = px.bar(
         df_hazards, x="Hazard", y="Value", color="Status", barmode="group",
-        title=f"Impact Amplification by Secondary Hazards ({y_label})",
+        title=f"Impact Amplification by {title_suffix} ({y_label})",
         template="plotly_dark",
         color_discrete_map={'With': '#ff5722', 'Without': '#757575'}
     )
@@ -748,7 +778,24 @@ def volcano_type_vs_hasard_heatmap(df, normalize=False):
     df_agents = df.dropna(subset=['Agent']).copy()
     df_agents['Agent_List'] = df_agents['Agent'].apply(lambda x: [agent.strip() for agent in str(x).split(',') if agent.strip()])
     agent_exploded = df_agents.explode('Agent_List')
-    agent_exploded.rename(columns={'Agent_List': 'Agent_Name'}, inplace=True)
+    
+    # Map codes to full names
+    hazard_map = {
+        'P': 'Pyroclastic Flow',
+        'M': 'Mudflow (Lahar)',
+        'T': 'Tephra (Ash)',
+        'W': 'Waves (Tsunami)',
+        'L': 'Lava Flow',
+        'G': 'Gas',
+        'I': 'Indirect',
+        'A': 'Avalanche',
+        'F': 'Floods',
+        'S': 'Seismic',
+        'E': 'Electrical',
+        'm': 'Mudflow (Lahar)',
+        '?': 'Unknown'
+    }
+    agent_exploded['Agent_Name'] = agent_exploded['Agent_List'].map(hazard_map).fillna(agent_exploded['Agent_List'])
 
     # Ensure 'Type' column is present for crosstab
     if 'Type' not in agent_exploded.columns:
@@ -785,7 +832,8 @@ def volcano_type_vs_hasard_heatmap(df, normalize=False):
         color_continuous_scale="Reds",
         title=title_text,
         template="plotly_dark",
-        labels=dict(x="Hazard Agent", y="Volcano Type", color=color_label)
+        labels=dict(x="Hazard Agent", y="Volcano Type", color=color_label),
+        aspect="auto"
     )
 
     # Update hover template to show nice numbers
@@ -797,12 +845,12 @@ def volcano_type_vs_hasard_heatmap(df, normalize=False):
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color="white"),
-        margin=dict(l=10, r=10, t=40, b=10),
-        autosize=False,
+        margin=dict(l=10, r=10, t=40, b=80), # Increased bottom margin for diagonal labels
+        autosize=True,
         xaxis_title="Hazard Agent",
         yaxis_title="Volcano Type"
     )
-    fig.update_xaxes(side="top")
+    fig.update_xaxes(side="bottom", tickangle=-45)
     return fig
 
 def get_type_vs_frequency(df):
@@ -1086,7 +1134,9 @@ app.layout = html.Div(
                                 {'label': 'Median Deaths', 'value': 'median'},
                                 {'label': 'Mean Deaths', 'value': 'mean'},
                                 {'label': 'Total Deaths (All)', 'value': 'sum'},
-                                {'label': 'Total Deaths (Secondary)', 'value': 'sum_secondary'}
+                                {'label': 'Median (Agents)', 'value': 'median_agents'},
+                                {'label': 'Mean (Agents)', 'value': 'mean_agents'},
+                                {'label': 'Total (Agents)', 'value': 'sum_agents'}
                             ],
                             'mean'
                         ),
@@ -1388,7 +1438,9 @@ create_button_callback('secondary', [
     {'label': 'Median Deaths', 'value': 'median'},
     {'label': 'Mean Deaths', 'value': 'mean'},
     {'label': 'Total Deaths (All)', 'value': 'sum'},
-    {'label': 'Total Deaths (Secondary)', 'value': 'sum_secondary'}
+    {'label': 'Median (Agents)', 'value': 'median_agents'},
+    {'label': 'Mean (Agents)', 'value': 'mean_agents'},
+    {'label': 'Total (Agents)', 'value': 'sum_agents'}
 ])
 
 create_button_callback('type_scale', [
