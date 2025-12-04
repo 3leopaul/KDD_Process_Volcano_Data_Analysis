@@ -67,6 +67,13 @@ def load_data(filepath="volcano-events.tsv"):
     
     return df
 
+# Function: Build a scatter-based world map showing individual volcano eruptions.
+# Input:
+#   - df (pd.DataFrame): filtered volcano dataset containing at least
+#       ["Latitude", "Longitude", "Type", "Name", "VEI", "Country", "Year", "Deaths"]
+# Output:
+#   - fig (plotly.graph_objs.Figure): an interactive scatter_geo map (used in Dash)
+
 def get_map_points(df):
     # Copy the dataframe to avoid modifying the original one
     df_map = df.copy()
@@ -90,7 +97,7 @@ def get_map_points(df):
             "VEI": True,
             "VEI_Size": False
         },
-        # title="Global Volcano Distribution (Bubble size = VEI)", # Removed title
+        title="Global Volcano Distribution (Bubble size = VEI)",
         projection="natural earth", # projection style
         size_max=15,                # maximum bubble size
         template="plotly_dark"      # dark theme to match dashboard
@@ -98,10 +105,27 @@ def get_map_points(df):
 
     # Custom color palette: 20 vivid volcanic colors (orange → red → magenta → violet)
     warm_palette = [
-        "#ffb74d", "#ffa726", "#ff9800", "#fb8c00", "#f57c00", "#ef6c00",
-        "#e65100", "#ff6d00", "#ff3d00", "#dd2c00",
-        "#ff1744", "#f50057", "#d50000", "#c51162", "#aa00ff",
-        "#9c27b0", "#8e24aa", "#7b1fa2", "#6a1b9a", "#6200ea"
+   
+    "#ffd500",  # deep orange
+    "#ff8f00",  # vivid orange
+    "#ff3d00",  # bright red-orange
+    "#ff1a00",  # pure red-orange
+    "#e60000",  # intense red
+    "#c51162",  # magenta
+    "#ff0055",  # neon pink-red
+    "#d81b60",  # pink-magenta
+    "#b0003a",  # dark magenta-red
+    "#9c004d",  # deep pink-purple
+    "#aa00ff",  # neon violet
+    "#8e24aa",  # classic violet
+    "#7b1fa2",  # deep violet
+    "#6a1b9a",  # darker violet
+    "#4a148c",  # almost purple-black
+    "#7f0000",
+    "#b30000",
+    "#d50000",
+    "#ff1744",
+    "#ff4081"
     ]
 
     n_traces = len(fig.data)   # one trace per volcano Type
@@ -132,6 +156,16 @@ def get_map_points(df):
 
     return fig
 
+# Function: Build a choropleth (colored world map) aggregated by country.
+# Input:
+#   - df (pd.DataFrame): filtered volcano dataset containing at least:
+#       ["Country", value_col]
+#   - value_col (str): column name used for coloring (e.g., "Count", "Deaths", "Damage_Millions")
+#   - title (str): title of the choropleth
+#   - color_label (str): label for the colorbar (e.g., "Eruptions", "Deaths", "Damage")
+# Output:
+#   - fig (plotly.graph_objs.Figure): an interactive choropleth map (used in Dash)
+
 def get_country_choropleth(df, value_col, title, color_label):
     # Aggregate data by country for the selected metric (count, deaths, damage…)
     agg = df.groupby('Country', as_index=False)[value_col].sum()
@@ -157,10 +191,11 @@ def get_country_choropleth(df, value_col, title, color_label):
         locationmode='country names',   # match names to world countries
         color=value_col,                # metric used for color intensity
         hover_name='Country',           # tooltip title
-        # title=title,                  # Removed title
+        title=title,
         labels={value_col: color_label}, # name of the color axis
         template="plotly_dark",          # dark theme
-        color_continuous_scale=volcano_scale
+        color_continuous_scale=volcano_scale,
+        projection="natural earth"       # projection style
     )
     # Display country borders, coastlines, and land
     fig.update_geos(
@@ -839,7 +874,7 @@ app.layout = html.Div(
                 html.H2(id='kpi-deaths', style={'font-size': '32px'})
             ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
             html.Div([
-                html.H4("Total Damage ($M)", style={'color': '#888', 'font-size': '14px'}),
+                html.H4("Total Damage", style={'color': '#888', 'font-size': '14px'}),
                 html.H2(id='kpi-damage', style={'font-size': '32px'})
             ], style={**CARD_STYLE, 'flex': '1'})
         ], style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '20px'}),
@@ -1322,7 +1357,7 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     # KPIs
     total_eruptions = len(dff)
     total_deaths = f"{int(dff['Deaths'].sum()):,}"
-    total_damage = f"${dff['Damage_Millions'].sum():,.0f}"
+    total_damage = f"${dff['Damage_Millions'].sum()*1000000:,.0f}"
 
     # Figures
     if map_mode == 'distribution':
