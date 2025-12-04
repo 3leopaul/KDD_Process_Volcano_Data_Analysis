@@ -1072,7 +1072,13 @@ app.layout = html.Div(
                         'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 'white-space': 'nowrap', 'transition': 'all 0.5s ease'
                     })
                 ], style={'display': 'flex', 'width': '100%', 'justify-content': 'center'})
-            ], style={'marginTop': '10px'})
+            ], style={'marginTop': '10px'}),
+            
+            # Dynamic Insight Text
+            html.Div(id='map-insight', style={
+                'marginTop': '15px', 'padding': '15px', 'borderLeft': '4px solid #ff5722',
+                'backgroundColor': '#252525', 'color': '#ddd', 'fontStyle': 'italic'
+            })
         ], style={**CARD_STYLE, 'padding': '10px'}), 
         
         # Time Series Row
@@ -1089,7 +1095,13 @@ app.layout = html.Div(
                     'year'
                 ),
                 dcc.Graph(id='time-graph', style={'height': '320px'}),
-                html.Div(id='forecast-disclaimer', style={'textAlign': 'center', 'color': '#ff9800', 'fontStyle': 'italic', 'marginTop': '10px'})
+                html.Div(id='forecast-disclaimer', style={'textAlign': 'center', 'color': '#ff9800', 'fontStyle': 'italic', 'marginTop': '10px'}),
+                
+                # Dynamic Temporal Insight Text
+                html.Div(id='temporal-insight', style={
+                    'marginTop': '15px', 'padding': '15px', 'borderLeft': '4px solid #ff5722',
+                    'backgroundColor': '#252525', 'color': '#ddd', 'fontStyle': 'italic'
+                })
             ], style={**CARD_STYLE, 'flex': '1'})
         ], style={'display': 'flex', 'margin-bottom': '20px'}),
 
@@ -1100,7 +1112,8 @@ app.layout = html.Div(
             html.H2("1. The Pareto Principle of Death", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
             html.P([
                 html.B("Insight: "), "Volcanic fatalities follow a 'Power Law'. The vast majority of eruptions are harmless. ",
-                "A tiny fraction (<1%) of events (like Tambora, Krakatau, Pelee) account for >80% of historical deaths.",
+                "A tiny fraction (<1%) of events (like Tambora, Krakatau, Pelee) account for >80% of historical deaths. ",
+                "The Top 10 countries alone account for the vast majority of all recorded fatalities.",
                 html.Br(),
                 html.B("Conclusion: "), "Disaster planning shouldn't focus on average eruptions, but on extreme outliers."
             ], style={'fontSize': '16px', 'marginBottom': '20px'}),
@@ -1118,10 +1131,10 @@ app.layout = html.Div(
         html.Div([
             html.H2("2. The Indirect Killer", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
             html.P([
-                html.B("Insight: "), "Eruptions accompanied by Tsunamis or Earthquakes are exponentially deadlier than those without. ",
-                "The Heatmap shows that while 'Tephra' (ash) is frequent, 'Tsunami' is the highest probability killer when it occurs.",
+                html.B("Insight: "), "Pyroclastic Flows are the #1 historical killer (182k+ deaths), followed by Tsunamis (137k+). ",
+                "Surprisingly, 'Indirect' causes (starvation, disease) are the 3rd deadliest category (112k+), often more lethal than direct lava flows.",
                 html.Br(),
-                html.B("Conclusion: "), "Coastal proximity is a higher risk factor than volcano explosivity (VEI) alone."
+                html.B("Conclusion: "), "While 'Tephra' (ash) is the most frequent hazard, flows and waves are the true mass killers."
             ], style={'fontSize': '16px', 'marginBottom': '20px'}),
 
             html.Div([
@@ -1168,8 +1181,10 @@ app.layout = html.Div(
         html.Div([
             html.H2("3. The Matrix of Threat", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
             html.P([
-                html.B("Insight: "), "Stratovolcanoes are the 'Critical Threat' (High Frequency / High Death). ",
-                "Calderas are 'Black Swans' (Low Frequency / Catastrophic Death). Shield Volcanoes are 'Manageable Risks'.",
+                html.B("Insight: "), "Stratovolcanoes are responsible for the most total deaths (217k+), simply due to their frequency. ",
+                "However, Calderas are the deadliest *per event* (avg ~1,100 deaths), followed by Maars.",
+                html.Br(),
+                html.B("Conclusion: "), "Risk = Probability x Impact. Stratovolcanoes are high probability/high impact, while Calderas are low probability/extreme impact."
             ], style={'fontSize': '16px', 'marginBottom': '20px'}),
 
             html.Div([
@@ -1476,6 +1491,7 @@ create_button_callback('heatmap', [
      Output('kpi-deaths', 'children'),
      Output('kpi-damage', 'children'),
      Output('forecast-disclaimer', 'children'),
+     Output('temporal-insight', 'children'),
      # New Outputs
      Output('top10-deadliest-regions', 'figure'),
      Output('region-volcano-sunburst', 'figure'),
@@ -1585,16 +1601,38 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
 
     # Disclaimer Logic
     disclaimer_text = ""
-    if time_mode == 'forecast':
-        disclaimer_text = "The forecast is false as it predicts growing eruptions in the future but this is due to a 'trend' of growing volcano activity in the data due to more data being collected over the years"
+    # if time_mode == 'forecast':
+    #     disclaimer_text = "..." # Moved to temporal_insight
+
+    # Temporal Insight Logic
+    temporal_insight = ""
+    if time_mode in ['year', 'century', 'smooth']:
+        temporal_insight = "The observed increase in eruptions over time is primarily due to improved data collection and reporting, not necessarily a geological increase. Volcanic eruptions remain largely unpredictable events."
+    elif time_mode == 'forecast':
+        temporal_insight = "The forecast is false as it predicts growing eruptions in the future but this is due to a 'trend' of growing volcano activity in the data due to more data being collected over the years"
 
     return (fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, 
             fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei, 
-            total_eruptions, total_deaths, total_damage, disclaimer_text,
+            total_eruptions, total_deaths, total_damage, disclaimer_text, temporal_insight,
             # New Returns
             fig_regions, fig_sunburst, fig_treemap, fig_donut,
             fig_inj_scatter, fig_inj_bubble, fig_inj_ratio, fig_inj_ratio_sc,
             fig_boxplot, fig_boxplot_type, fig_pareto, fig_loglog, fig_corr)
+
+@app.callback(
+    Output('map-insight', 'children'),
+    Input('map-mode-store', 'data')
+)
+def update_map_insight(mode):
+    if mode == 'distribution':
+        return "Looking at volcanoe distribution around the world, alows us to see the 'Ring of Fire' phenomenom in the Pacific where most volcanoes are concentrated."
+    elif mode == 'frequency':
+        return "The frequency of volcanoes is also seen primarily in the Ring of Fire and especially Indonesia, with some outliers like Italy and Iceland."
+    elif mode == 'deaths':
+        return "The death map is practically the same as the frequency map, which is to be expected as more eruptions naturally implies more deaths. The difference observed between the two can be explained by two main factors, countries with high frequency but low deaths can be due to volcano eruptions happening in sparsely populated areas (like Russia), or countries with better infrastructure helping mitigate the fatalities per eruption."
+    elif mode == 'damage':
+        return "Finally, total damage reflects economic data as the countries with the most damage are first world countries where infrastructure is more costly (USA, Italy, Spain), even though some of these like Spain had very few deaths and eruptions. Indonesia still appears in this graph as the sheer number of eruptions compensates the lower standards of living."
+    return ""
 
 if __name__ == '__main__':
     print("Launching Dashboard...")
