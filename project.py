@@ -396,11 +396,23 @@ def render_temporal_series(df, mode="year"):
         return fig
 
 def get_impact_figure(df):
-    top_deadly = df.nlargest(10, 'Deaths').sort_values('Deaths', ascending=True)
+    top_deadly = df.nlargest(10, 'Deaths').sort_values('Deaths', ascending=True).copy()
+    
+    def format_label(row):
+        y = row['Year']
+        try:
+            y_int = int(y)
+            suffix = "BC" if y_int < 0 else "AD"
+            return f"{row['Name']} ({abs(y_int)} {suffix})"
+        except:
+            return f"{row['Name']} ({y})"
+
+    top_deadly['Label'] = top_deadly.apply(format_label, axis=1)
+    
     fig = px.bar(
         top_deadly,
         x="Deaths",
-        y="Name",
+        y="Label",
         orientation='h',
         text="Deaths",
         title="Top 10 Deadliest Eruptions",
