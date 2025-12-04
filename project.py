@@ -3,6 +3,7 @@ import plotly.express as px
 from dash import Dash, dcc, html, Input, Output, State, ctx
 import plotly.graph_objects as go
 import numpy as np
+import src.components.impact_analysis as impact
 
 
 def load_raw_data(filepath):
@@ -766,6 +767,8 @@ app = Dash(__name__)
 
 # Load Data
 df = load_data()
+if df.empty:
+    raise ValueError("CRITICAL ERROR: Data could not be loaded. Check 'volcano-events.tsv' path.")
 
 # Styles
 # Styles
@@ -785,44 +788,66 @@ CARD_STYLE = {
 }
 
 # Layout
-app.layout = html.Div([
-    # Custom CSS for Dark Theme Components (Loaded from assets/custom.css)
+app.layout = html.Div(
+    children=[
+        html.H1("Volcano Insights Dashboard", style={'textAlign': 'center', 'color': 'white'}),
+        html.P("Analyzing Significant Volcanic Eruptions", style={'textAlign': 'center', 'color': '#ccc'}),
 
+        # ---------- Global Filters ----------
+        html.Div(
+            children=[
+                html.Div(
+                    children=[
+                        html.Label("Year range", style={'color': 'white'}),
+                        dcc.RangeSlider(
+                            id="year-slider",
+                            min=df['Year'].min(), # Assuming df is available here
+                            max=2025, # Assuming a max year
+                            value=[df['Year'].min(), 2025],
+                            step=10,
+                            marks={str(y): {'label': str(y), 'style': {'color': 'white'}} for y in range(int(df['Year'].min()), 2025 + 1, 500)},
+                            tooltip={"placement": "bottom", "always_visible": True},
+                        ),
+                    ],
+                    style={"flex": "2", "marginRight": "30px"},
+                ),
+                html.Div(
+                    children=[
+                        html.Label("Country", style={'color': 'white'}),
+                        dcc.Dropdown(
+                            id="country-dropdown",
+                            options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())], # Assuming df is available here
+                            placeholder="All countries",
+                            value=None,
+                            clearable=True,
+                            style={'color': 'black'}
+                        ),
+                    ],
+                    style={"flex": "1"},
+                ),
+            ],
+            style={"display": "flex", "alignItems": "center", "marginBottom": "30px", "padding": "20px", "backgroundColor": "#1e1e1e", "borderRadius": "10px"},
+        ),
 
-    # Main Content
-    html.Div([
-        # Header: Title + KPIs
-        # Header: Title + KPIs
         html.Div([
-            # Title Section
             html.Div([
-                html.H1("Volcano Insights Dashboard", style={'margin-bottom': '5px', 'text-align': 'center'}),
-                html.P("Analyzing Significant Volcanic Eruptions", style={'color': '#888', 'margin': '0', 'text-align': 'center'}),
-            ]),
-            
-            # KPIs (Horizontal)
+                html.H4("Total Eruptions", style={'color': '#888', 'font-size': '14px'}),
+                html.H2(id='kpi-eruptions', style={'font-size': '32px'})
+            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
             html.Div([
-                html.Div([
-                    html.H4("Total Eruptions", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.H2(id='kpi-eruptions', style={'font-size': '24px', 'margin': '0'})
-                ], style={'margin-right': '40px', 'text-align': 'right'}),
-                html.Div([
-                    html.H4("Total Deaths", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.H2(id='kpi-deaths', style={'font-size': '24px', 'margin': '0'})
-                ], style={'margin-right': '40px', 'text-align': 'right'}),
-                html.Div([
-                    html.H4("Total Damage ($M)", style={'color': '#888', 'font-size': '12px', 'margin-bottom': '5px'}),
-                    html.H2(id='kpi-damage', style={'font-size': '24px', 'margin': '0'})
-                ], style={'text-align': 'right'})
-            ], style={'display': 'flex', 'align-items': 'center', 'position': 'absolute', 'right': '0'})
-        ], style={'display': 'flex', 'justify-content': 'center', 'align-items': 'center', 'margin-bottom': '30px', 'position': 'relative'}),
+                html.H4("Total Deaths", style={'color': '#888', 'font-size': '14px'}),
+                html.H2(id='kpi-deaths', style={'font-size': '32px'})
+            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+            html.Div([
+                html.H4("Total Damage ($M)", style={'color': '#888', 'font-size': '14px'}),
+                html.H2(id='kpi-damage', style={'font-size': '32px'})
+            ], style={**CARD_STYLE, 'flex': '1'})
+        ], style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '20px'}),
 
-        # Hero Section: Map (No KPI Overlay)
+        # ---------- Hero Section: Map ----------
         html.Div([
-            # Map (Full Height)
-            dcc.Graph(id='map-graph', style={'height': '100%', 'width': '100%'}),
-
-            # Map Controls (Buttons)
+            dcc.Graph(id='map-graph', style={'height': '600px', 'width': '100%'}),
+            # Map Controls
             html.Div([
                 dcc.Store(id='map-mode-store', data='distribution'),
                 html.Div([
@@ -847,57 +872,8 @@ app.layout = html.Div([
                         'cursor': 'pointer', 'text-align': 'center', 'overflow': 'hidden', 'white-space': 'nowrap', 'transition': 'all 0.5s ease'
                     })
                 ], style={'display': 'flex', 'width': '100%', 'justify-content': 'center'})
-            ], style={
-                'position': 'absolute',
-                'top': '20px',
-                'left': '50%',
-                'transform': 'translateX(-50%)',
-                'z-index': '1000',
-                'width': '600px'
-            }),
-
-            # Filter Overlay (Top Right)
-            html.Div([
-                html.Div([
-                    html.Label("Year Range", style={'color': '#888', 'margin-right': '10px', 'white-space': 'nowrap'}),
-                    dcc.RangeSlider(
-                        id='year-slider',
-                        min=df['Year'].min(),
-                        max=2025,
-                        value=[df['Year'].min(), 2025],
-                        marks={**{str(year): str(year) for year in range(int(df['Year'].min()), 2020, 1000)}, '2025': '2025'},
-                        tooltip={"placement": "bottom", "always_visible": True},
-                        className="dark-slider"
-                    ),
-                ], style={'width': '300px', 'margin-bottom': '10px'}),
-                
-                html.Div([
-                    dcc.Dropdown(
-                        id='country-dropdown',
-                        options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())],
-                        placeholder="All Countries",
-                        style={'width': '100%'}
-                    )
-                ], style={'width': '200px'})
-            ], style={
-                'position': 'fixed',
-                'top': '20px',
-                'left': '20px',
-                'background-color': 'rgba(30, 30, 30, 0.9)',
-                'padding': '15px',
-                'border-radius': '10px',
-                'box-shadow': '0 4px 6px rgba(0,0,0,0.3)',
-                'z-index': '1000',
-                'display': 'flex',
-                'flex-direction': 'column',
-                'align-items': 'flex-start'
-            })
-
-        ], style={'position': 'relative', 'height': '85vh', 'margin-bottom': '40px', 'border-radius': '10px', 'overflow': 'hidden'}),
-
-        ], style={'position': 'relative', 'height': '85vh', 'margin-bottom': '40px', 'border-radius': '10px', 'overflow': 'hidden'}),
-
-        # Scrollable Content Starts Here
+            ], style={'marginTop': '10px'})
+        ], style={**CARD_STYLE, 'padding': '10px'}), 
         
         # Time Series Row
         html.Div([
@@ -915,37 +891,39 @@ app.layout = html.Div([
             ], style={**CARD_STYLE, 'flex': '1'})
         ], style={'display': 'flex', 'margin-bottom': '20px'}),
 
-        # Charts Row 2 - impact charts
+        # =============================================================================
+        # NARRATIVE SECTION 1: The Pareto Principle of Death
+        # =============================================================================
         html.Div([
-            html.Div([dcc.Graph(id='impact-graph')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
-        ], style={'display': 'flex'}),
-
-        # Correlation charts
-        # Correlation chart row 1
-        html.Div([
-            html.Div([
-                # New Control: Radio Buttons for VEI Metric
-                html.Div([
-                    create_expanding_buttons(
-                        'vei',
-                        [
-                            {'label': 'Median Deaths', 'value': 'median'},
-                            {'label': 'Mean Deaths', 'value': 'mean'},
-                            {'label': 'Total Deaths', 'value': 'sum'},
-                            {'label': 'Total Eruptions', 'value': 'count'}
-                        ],
-                        'median'
-                    ),
-                ], style={'textAlign': 'center'}),
-                
-                dcc.Graph(id='median_deaths_by_VIE', style={'height': '400px'})
-            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
+            html.H2("1. The Pareto Principle of Death", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
+            html.P([
+                html.B("Insight: "), "Volcanic fatalities follow a 'Power Law'. The vast majority of eruptions are harmless. ",
+                "A tiny fraction (<1%) of events (like Tambora, Krakatau, Pelee) account for >80% of historical deaths.",
+                html.Br(),
+                html.B("Conclusion: "), "Disaster planning shouldn't focus on average eruptions, but on extreme outliers."
+            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
             
-            html.Div([dcc.Graph(id='top_countries_by_historical_deaths', style={'height': '400px'})], style={**CARD_STYLE, 'flex': '1'})
-        ], style={'display': 'flex'}),
-        
-        # Correlation chart row 2
+            html.Div([
+                html.Div([dcc.Graph(id='pareto-chart', style={'height': '400px'})], style={**CARD_STYLE, 'flex': '1', 'marginRight': '20px'}),
+                html.Div([dcc.Graph(id='loglog-plot', style={'height': '400px'})], style={**CARD_STYLE, 'flex': '1'})
+            ], style={'display': 'flex'})
+        ], style={'marginBottom': '60px'}),
+
+
+        # =============================================================================
+        # NARRATIVE SECTION 2: The Indirect Killer
+        # =============================================================================
         html.Div([
+            html.H2("2. The Indirect Killer", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
+            html.P([
+                html.B("Insight: "), "Eruptions accompanied by Tsunamis or Earthquakes are exponentially deadlier than those without. ",
+                "The Heatmap shows that while 'Tephra' (ash) is frequent, 'Tsunami' is the highest probability killer when it occurs.",
+                html.Br(),
+                html.B("Conclusion: "), "Coastal proximity is a higher risk factor than volcano explosivity (VEI) alone."
+            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
+
+            html.Div([
+                # Secondary Hazards Bar Chart
                 html.Div([
                     html.Div([
                         create_expanding_buttons(
@@ -959,73 +937,169 @@ app.layout = html.Div([
                             'mean'
                         ),
                     ], style={'textAlign': 'center'}),
-                    dcc.Graph(id='with_and_without_indirect_deaths_by_type')
-                ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
-                
-                # --- START OF CHANGE ---
-                html.Div([
-                    # Metric Control
-                    html.Div([
-                        create_expanding_buttons(
-                            'type_metric',
-                            [
-                                {'label': 'Total Deaths', 'value': 'total'},
-                                {'label': 'Deaths/Eruption', 'value': 'rate'}
-                            ],
-                            'total'
-                        ),
-                    ], style={'textAlign': 'center'}),
-                    
-                    # Scale Control
-                    html.Div([
-                        create_expanding_buttons(
-                            'type_scale',
-                            [
-                                {'label': 'Log Scale', 'value': 'log'},
-                                {'label': 'Linear Scale', 'value': 'linear'}
-                            ],
-                            'log'
-                        ),
-                    ], style={'textAlign': 'center'}),
+                    dcc.Graph(id='with_and_without_indirect_deaths_by_type', style={'height': '400px'})
+                ], style={**CARD_STYLE, 'flex': '1', 'marginRight': '20px'}),
 
-                    # Chart Container
-                    dcc.Graph(id='volcano_type'),
-                    
+                # Heatmap
+                html.Div([
+                    html.Div([
+                        create_expanding_buttons(
+                            'heatmap',
+                            [
+                                {'label': 'Count', 'value': 'count'},
+                                {'label': 'Risk Percentage', 'value': 'percent'}
+                            ],
+                            'count'
+                        )
+                    ]),
+                    dcc.Graph(id='vei-deaths-graph', style={'height': '400px', 'width': '100%'}) 
                 ], style={**CARD_STYLE, 'flex': '1'})
-                
-            ],),
-            
+            ], style={'display': 'flex'})
+        ], style={'marginBottom': '60px'}),
 
 
-
-
-        # New Graphs Row 1
+        # =============================================================================
+        # NARRATIVE SECTION 3: The Matrix of Threat
+        # =============================================================================
         html.Div([
+            html.H2("3. The Matrix of Threat", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
+            html.P([
+                html.B("Insight: "), "Stratovolcanoes are the 'Critical Threat' (High Frequency / High Death). ",
+                "Calderas are 'Black Swans' (Low Frequency / Catastrophic Death). Shield Volcanoes are 'Manageable Risks'.",
+            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
+
             html.Div([
-                html.Div([
-                    create_expanding_buttons(
-                        'heatmap',
-                        [
-                            {'label': 'Count', 'value': 'count'},
-                            {'label': 'Risk Percentage', 'value': 'percent'}
-                        ],
-                        'count'
-                    )
-                ]),
-                # --- THE FIX IS HERE ---
-                # You must define height in CSS because autosize is False in the figure
-                dcc.Graph(id='vei-deaths-graph', style={'height': '400px', 'width': '100%'}) 
-                
-            ], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
-            
-            html.Div([dcc.Graph(id='deaths-injuries-graph')], style={**CARD_STYLE, 'flex': '1'})
-        ], style={'display': 'flex', 'margin-bottom': '20px'}),
+                html.Div([dcc.Graph(id='deaths-injuries-graph', style={'height': '500px'})], style={**CARD_STYLE, 'flex': '1'}) # This is the Risk Matrix (get_type_vs_frequency)
+            ], style={'display': 'flex'})
+        ], style={'marginBottom': '60px'}),
 
-        # New Graphs Row 2
-        html.Div([
-            html.Div([dcc.Graph(id='deaths-damage-graph')], style={**CARD_STYLE, 'flex': '1', 'margin-right': '20px'}),
-            html.Div([dcc.Graph(id='elevation-vei-graph')], style={**CARD_STYLE, 'flex': '1'})
-        ], style={'display': 'flex'}),
+        # =============================================================================
+        # DETAILED EXPLORATION (Tabs)
+        # =============================================================================
+        html.H2("Detailed Exploration", style={'color': 'white', 'borderBottom': '1px solid #333', 'paddingBottom': '10px'}),
+        dcc.Tabs(
+            id="tabs",
+            value="tab-global",
+            colors={"border": "#1e1e1e", "primary": "#ff5722", "background": "#333"},
+            children=[
+                # Tab 1 : Global Impact
+                dcc.Tab(
+                    label="Global Impact",
+                    value="tab-global",
+                    children=[
+                        html.Div(
+                            children=[
+                                html.Div([dcc.Graph(id="impact-graph", style={'height': '400px'})], style={**CARD_STYLE}), # Top 10 Eruptions
+                                html.Div([dcc.Graph(id="top_countries_by_historical_deaths", style={'height': '400px'})], style={**CARD_STYLE}),
+                                
+                                # VEI Analysis
+                                html.Div([
+                                    html.Div([
+                                        create_expanding_buttons(
+                                            'vei',
+                                            [
+                                                {'label': 'Median Deaths', 'value': 'median'},
+                                                {'label': 'Mean Deaths', 'value': 'mean'},
+                                                {'label': 'Total Deaths', 'value': 'sum'},
+                                                {'label': 'Total Eruptions', 'value': 'count'}
+                                            ],
+                                            'median'
+                                        ),
+                                    ], style={'textAlign': 'center'}),
+                                    dcc.Graph(id='median_deaths_by_VIE', style={'height': '400px'})
+                                ], style={**CARD_STYLE}),
+
+                                # Volcano Type Analysis
+                                html.Div([
+                                    html.Div([
+                                        create_expanding_buttons(
+                                            'type_metric',
+                                            [
+                                                {'label': 'Total Deaths', 'value': 'total'},
+                                                {'label': 'Deaths/Eruption', 'value': 'rate'}
+                                            ],
+                                            'total'
+                                        ),
+                                    ], style={'textAlign': 'center'}),
+                                    html.Div([
+                                        create_expanding_buttons(
+                                            'type_scale',
+                                            [
+                                                {'label': 'Log Scale', 'value': 'log'},
+                                                {'label': 'Linear Scale', 'value': 'linear'}
+                                            ],
+                                            'log'
+                                        ),
+                                    ], style={'textAlign': 'center', 'marginTop': '5px'}),
+                                    dcc.Graph(id='volcano_type', style={'height': '400px'}),
+                                ], style={**CARD_STYLE}),
+                            ],
+                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "20px", "padding": "20px"},
+                        )
+                    ],
+                    style={'backgroundColor': '#1e1e1e', 'color': 'white'},
+                    selected_style={'backgroundColor': '#ff5722', 'color': 'white'}
+                ),
+
+                # Tab 2 : Regional Analysis
+                dcc.Tab(
+                    label="Regional Analysis",
+                    value="tab-regions",
+                    children=[
+                        html.Div(
+                            children=[
+                                html.Div([dcc.Graph(id="top10-deadliest-regions", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="region-volcano-sunburst", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="volcano-treemap", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="volcano-donut", style={'height': '400px'})], style={**CARD_STYLE}),
+                            ],
+                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "20px", "padding": "20px"},
+                        )
+                    ],
+                    style={'backgroundColor': '#1e1e1e', 'color': 'white'},
+                    selected_style={'backgroundColor': '#ff5722', 'color': 'white'}
+                ),
+
+                # Tab 3 : Injury Analysis
+                dcc.Tab(
+                    label="Injury Analysis",
+                    value="tab-injuries",
+                    children=[
+                        html.Div(
+                            children=[
+                                html.Div([dcc.Graph(id="deaths-vs-injuries-scatter", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="deaths-vs-injuries-bubble", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="injury-ratio-bar", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="injury-ratio-scatter", style={'height': '400px'})], style={**CARD_STYLE}),
+                            ],
+                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "20px", "padding": "20px"},
+                        )
+                    ],
+                    style={'backgroundColor': '#1e1e1e', 'color': 'white'},
+                    selected_style={'backgroundColor': '#ff5722', 'color': 'white'}
+                ),
+
+                # Tab 4 : Distributions & Risk
+                dcc.Tab(
+                    label="Distributions & Risk",
+                    value="tab-distributions",
+                    children=[
+                        html.Div(
+                            children=[
+                                html.Div([dcc.Graph(id="death-boxplot", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="death-boxplot-by-type", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="correlation-heatmap", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="deaths-damage-graph", style={'height': '400px'})], style={**CARD_STYLE}),
+                                html.Div([dcc.Graph(id="elevation-vei-graph", style={'height': '400px'})], style={**CARD_STYLE}),
+                            ],
+                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "20px", "padding": "20px"},
+                        )
+                    ],
+                    style={'backgroundColor': '#1e1e1e', 'color': 'white'},
+                    selected_style={'backgroundColor': '#ff5722', 'color': 'white'}
+                ),
+            ],
+        ),
 
     ], style=CONTENT_STYLE)
 
@@ -1193,7 +1267,21 @@ create_button_callback('heatmap', [
      Output('elevation-vei-graph', 'figure'),
      Output('kpi-eruptions', 'children'),
      Output('kpi-deaths', 'children'),
-     Output('kpi-damage', 'children')],
+     Output('kpi-damage', 'children'),
+     # New Outputs
+     Output('top10-deadliest-regions', 'figure'),
+     Output('region-volcano-sunburst', 'figure'),
+     Output('volcano-treemap', 'figure'),
+     Output('volcano-donut', 'figure'),
+     Output('deaths-vs-injuries-scatter', 'figure'),
+     Output('deaths-vs-injuries-bubble', 'figure'),
+     Output('injury-ratio-bar', 'figure'),
+     Output('injury-ratio-scatter', 'figure'),
+     Output('death-boxplot', 'figure'),
+     Output('death-boxplot-by-type', 'figure'),
+     Output('pareto-chart', 'figure'),
+     Output('loglog-plot', 'figure'),
+     Output('correlation-heatmap', 'figure')],
     [Input('country-dropdown', 'value'),
      Input('year-slider', 'value'),
      Input('vei-store', 'data'),
@@ -1205,13 +1293,28 @@ create_button_callback('heatmap', [
      Input('type_metric-store', 'data')] 
 )
 def update_dashboard(selected_country, year_range, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode, type_scale, type_metric):
-    # Filter Data
+    # 1. Check if callback fires
+    print("CALLBACK FIRED") 
+    
+    # 2. Check Data
     dff = df.copy()
     if selected_country:
         dff = dff[dff['Country'] == selected_country]
     
+    # 3. Check if data survived filtering
+    print(f"Rows remaining after filter: {len(dff)}")
+    # Filter Data
+    print(f"DEBUG: Starting update_dashboard. Country={selected_country}, Year={year_range}", flush=True)
+    dff = df.copy()
+    print(f"DEBUG: Initial dff shape: {dff.shape}", flush=True)
+
+    if selected_country:
+        dff = dff[dff['Country'] == selected_country]
+        print(f"DEBUG: dff shape after country filter: {dff.shape}")
+    
     if year_range:
         dff = dff[(dff['Year'] >= year_range[0]) & (dff['Year'] <= year_range[1])]
+        print(f"DEBUG: dff shape after year filter: {dff.shape}")
 
     if dff.empty:
         dff = df # Fallback if empty
@@ -1252,7 +1355,33 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     fig_deaths_damage = get_deaths_vs_damage_figure(dff)
     fig_elevation_vei = get_elevation_vs_vei_figure(dff)
     
-    return fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei, total_eruptions, total_deaths, total_damage
+    # --- NEW GRAPHS GENERATION ---
+    # Regional
+    fig_regions = impact.render_top10_deadliest_regions(dff)
+    fig_sunburst = impact.render_region_volcano_sunburst(dff)
+    fig_treemap = impact.render_deadliest_volcanoes_treemap(dff)
+    fig_donut = impact.render_deadliest_volcanoes_donut(dff)
+    
+    # Injuries
+    fig_inj_scatter = impact.render_deaths_vs_injuries_scatter(dff)
+    fig_inj_bubble = impact.render_deaths_vs_injuries_bubble(dff)
+    fig_inj_ratio = impact.render_top10_injury_ratio(dff)
+    fig_inj_ratio_sc = impact.render_injury_ratio_scatter(dff)
+    
+    # Distributions
+    fig_boxplot = impact.render_death_boxplot(dff)
+    fig_boxplot_type = impact.render_death_boxplot_by_type(dff)
+    fig_pareto = impact.render_pareto_chart(dff)
+    fig_loglog = impact.render_loglog_heavytail(dff)
+    fig_corr = impact.render_correlation_heatmap(dff)
+
+    return (fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, 
+            fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei, 
+            total_eruptions, total_deaths, total_damage,
+            # New Returns
+            fig_regions, fig_sunburst, fig_treemap, fig_donut,
+            fig_inj_scatter, fig_inj_bubble, fig_inj_ratio, fig_inj_ratio_sc,
+            fig_boxplot, fig_boxplot_type, fig_pareto, fig_loglog, fig_corr)
 
 if __name__ == '__main__':
     print("Launching Dashboard...")
@@ -1260,5 +1389,5 @@ if __name__ == '__main__':
     app.run( # Runs the dashboard
         host='127.0.0.1', # Localhost adress on which the dashboard is running
         port=8051, # Port number on which the dashboard is running
-        debug=False, # Get's rid of debug console (white widget at bottom right of screen)
+        debug=True, # Get's rid of debug console (white widget at bottom right of screen)
         )
