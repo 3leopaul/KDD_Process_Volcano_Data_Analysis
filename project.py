@@ -4,6 +4,7 @@ from dash import Dash, dcc, html, Input, Output, State, ctx
 import plotly.graph_objects as go
 import numpy as np
 import src.components.impact_analysis as impact
+from prophet import Prophet
 
 
 def load_raw_data(filepath):
@@ -345,6 +346,91 @@ def render_time_series(df, by="year"):
 
     return fig
 
+def prepare_prophet_df(eruptions_per_year, min_year=1800):
+    """
+    Prepare data for Prophet:
+    - Filter years >= min_year
+    - Rename columns to 'ds' (date) and 'y' (value)
+    - Convert Year to datetime
+    """
+    df_p = eruptions_per_year[eruptions_per_year.index >= min_year].reset_index()
+    df_p.columns = ["Year", "y"]
+    df_p["ds"] = pd.to_datetime(df_p["Year"], format="%Y")
+    return df_p
+
+def forecast_eruptions(df_prophet, n_future_years=20):
+    """
+    Fit a Prophet model on the historical data and forecast n_future_years ahead.
+    """
+    model = Prophet()
+    model.fit(df_prophet)
+
+    # Generate future dates (one point per year)
+    future_dates = model.make_future_dataframe(periods=n_future_years, freq="YE")
+
+    # Predict on both historical + future dates
+    prediction = model.predict(future_dates)
+
+    return prediction
+
+def make_forecast_figure(df_prophet, prediction):
+    """
+    Build a Plotly figure showing historical yearly eruptions
+    and Prophet forecast.
+    """
+    fig = go.Figure()
+
+    # Historical data
+    fig.add_trace(go.Scatter(
+        x=df_prophet["ds"],
+        y=df_prophet["y"],
+        mode="lines",
+        name="Historical",
+        line=dict(color="#ff5722", width=2)
+    ))
+
+    # Forecast
+    fig.add_trace(go.Scatter(
+        x=prediction["ds"],
+        y=prediction["yhat"],
+        mode="lines",
+        name="Forecast",
+        line=dict(color="#ff9800", width=2, dash="dash")  # orange, dashed
+    ))
+
+    fig.update_layout(
+        title="Forecast of volcanic eruptions per year (Prophet)",
+        xaxis_title="Year",
+        yaxis_title="Number of eruptions",
+        height=320,
+        paper_bgcolor='rgba(0,0,0,0)',   # same as other cards
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="white"),
+        margin=dict(l=50, r=20, t=60, b=40),
+        legend=dict(bgcolor="rgba(0,0,0,0)")
+    )
+
+    return fig
+
+def make_empty_forecast_figure(message):
+    """
+    Simple empty figure used when there is not enough data
+    to fit a reliable Prophet model (e.g. after filters).
+    """
+    fig = go.Figure()
+    fig.update_layout(
+        title=message,
+        xaxis_title="Time",
+        yaxis_title="Number of eruptions",
+        height=320,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="white"),
+        margin=dict(l=50, r=20, t=60, b=40)
+    )
+    return fig
+
+
 def render_temporal_series(df, mode="year"):
     """
     3 modes for the dashboard:
@@ -394,6 +480,25 @@ def render_temporal_series(df, mode="year"):
             margin=dict(l=50, r=20, t=60, b=40)
         )
         return fig
+
+    # 4) Prophet Forecast
+    if mode == "forecast":
+        eruptions_per_year = build_eruptions_per_year(df)
+        # We need enough data points
+        if len(eruptions_per_year) < 20:
+            return make_empty_forecast_figure("Not enough data for forecast (need >20 years)")
+        
+        try:
+            df_prophet = prepare_prophet_df(eruptions_per_year, min_year=1800)
+            if len(df_prophet) < 10:
+                 return make_empty_forecast_figure("Not enough data since 1800 for forecast")
+                 
+            prediction = forecast_eruptions(df_prophet, n_future_years=50)
+            return make_forecast_figure(df_prophet, prediction)
+        except Exception as e:
+            return make_empty_forecast_figure(f"Forecast Error: {str(e)}")
+            
+    return go.Figure()
 
 def get_impact_figure(df):
     top_deadly = df.nlargest(10, 'Deaths').sort_values('Deaths', ascending=True).copy()
@@ -930,11 +1035,13 @@ app.layout = html.Div(
                     [
                         {'label': 'Year', 'value': 'year'},
                         {'label': 'Century', 'value': 'century'},
-                        {'label': 'Smooth (10y Avg)', 'value': 'smooth'}
+                        {'label': 'Smooth (10y Avg)', 'value': 'smooth'},
+                        {'label': 'Forecast (Prophet)', 'value': 'forecast'}
                     ],
                     'year'
                 ),
-                dcc.Graph(id='time-graph', style={'height': '320px'})
+                dcc.Graph(id='time-graph', style={'height': '320px'}),
+                html.Div(id='forecast-disclaimer', style={'textAlign': 'center', 'color': '#ff9800', 'fontStyle': 'italic', 'marginTop': '10px'})
             ], style={**CARD_STYLE, 'flex': '1'})
         ], style={'display': 'flex', 'margin-bottom': '20px'}),
 
@@ -1266,7 +1373,8 @@ def create_button_callback(group_id, options):
 create_button_callback('time', [
     {'label': 'Year', 'value': 'year'},
     {'label': 'Century', 'value': 'century'},
-    {'label': 'Smooth (10y Avg)', 'value': 'smooth'}
+    {'label': 'Smooth (10y Avg)', 'value': 'smooth'},
+    {'label': 'Forecast (Prophet)', 'value': 'forecast'}
 ])
 
 create_button_callback('vei', [
@@ -1315,6 +1423,7 @@ create_button_callback('heatmap', [
      Output('kpi-eruptions', 'children'),
      Output('kpi-deaths', 'children'),
      Output('kpi-damage', 'children'),
+     Output('forecast-disclaimer', 'children'),
      # New Outputs
      Output('top10-deadliest-regions', 'figure'),
      Output('region-volcano-sunburst', 'figure'),
@@ -1422,9 +1531,14 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     fig_loglog = impact.render_loglog_heavytail(dff)
     fig_corr = impact.render_correlation_heatmap(dff)
 
+    # Disclaimer Logic
+    disclaimer_text = ""
+    if time_mode == 'forecast':
+        disclaimer_text = "The forecast is false as it predicts growing eruptions in the future but this is due to a 'trend' of growing volcano activity in the data due to more data being collected over the years"
+
     return (fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, 
             fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei, 
-            total_eruptions, total_deaths, total_damage,
+            total_eruptions, total_deaths, total_damage, disclaimer_text,
             # New Returns
             fig_regions, fig_sunburst, fig_treemap, fig_donut,
             fig_inj_scatter, fig_inj_bubble, fig_inj_ratio, fig_inj_ratio_sc,

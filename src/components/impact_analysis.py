@@ -91,6 +91,20 @@ def render_deadliest_volcanoes_donut(df):
     # Share of deaths by Volcano Type
     if df.empty: return go.Figure()
     dff = df.groupby("Type")["Total_Deaths"].sum().reset_index()
+    
+    # Group small percentages (< 1%) into 'Other'
+    total_deaths = dff["Total_Deaths"].sum()
+    if total_deaths > 0:
+        mask = dff["Total_Deaths"] / total_deaths >= 0.01
+        large = dff[mask].copy()
+        small_sum = dff[~mask]["Total_Deaths"].sum()
+        
+        if small_sum > 0:
+            other_df = pd.DataFrame([{'Type': 'Other', 'Total_Deaths': small_sum}])
+            dff = pd.concat([large, other_df], ignore_index=True)
+        else:
+            dff = large
+        
     fig = px.pie(dff, values='Total_Deaths', names='Type', hole=0.4,
                  color_discrete_sequence=px.colors.sequential.Reds_r)
     return update_layout(fig, "Share of Fatalities by Volcano Type")
