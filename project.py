@@ -38,7 +38,8 @@ def clean_data(df):
         'Total Damage ($Mil)': 'Total_Damage_Millions',
         'Elevation (m)': 'Elevation',
         'Total Deaths': 'Total_Deaths',
-        'Total Injuries': 'Total_Injuries'
+        'Total Injuries': 'Total_Injuries',
+        'Location': 'Region'
     })
 
     #If 'Deaths' is empty, we assume 0 for the sake of calculation, rather than dropping the row.
@@ -1158,40 +1159,60 @@ app.layout = html.Div(
         html.P("Analyzing Significant Volcanic Eruptions", style={'textAlign': 'center', 'color': '#ccc'}),
 
         # ---------- Global Filters ----------
-        html.Div(
-            children=[
-                html.Div(
-                    children=[
-                        html.Label("Year range", style={'color': 'white'}),
-                        dcc.RangeSlider(
-                            id="year-slider",
-                            min=df['Year'].min(), # Assuming df is available here
-                            max=2025, # Assuming a max year
-                            value=[df['Year'].min(), 2025],
-                            step=10,
-                            marks={str(y): {'label': str(y), 'style': {'color': 'white'}} for y in range(int(df['Year'].min()), 2025 + 1, 500)},
-                            tooltip={"placement": "bottom", "always_visible": True},
-                        ),
-                    ],
-                    style={"flex": "2", "marginRight": "30px"},
-                ),
-                html.Div(
-                    children=[
-                        html.Label("Country", style={'color': 'white'}),
-                        dcc.Dropdown(
-                            id="country-dropdown",
-                            options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())], # Assuming df is available here
-                            placeholder="All countries",
-                            value=None,
-                            clearable=True,
-                            style={'color': 'black'}
-                        ),
-                    ],
-                    style={"flex": "1"},
-                ),
-            ],
-            style={"display": "flex", "alignItems": "center", "marginBottom": "30px", "padding": "20px", "backgroundColor": "#1e1e1e", "borderRadius": "10px"},
-        ),
+        html.Div([
+            # Row 1: Year Slider + Year Inputs
+            html.Div([
+                # Year Slider (Left)
+                html.Div([
+                    html.Label("Select Year Range:", style={'color': '#ff5722', 'fontWeight': 'bold', 'marginBottom': '5px'}),
+                    dcc.RangeSlider(
+                        id='year-slider',
+                        min=int(df['Year'].min()),
+                        max=2025,
+                        value=[int(df['Year'].min()), 2025],
+                        marks={str(year): str(year) for year in range(int(df['Year'].min()), 2026, 500)},
+                        step=1,
+                        tooltip={"placement": "bottom", "always_visible": True},
+                        allowCross=False
+                    ),
+                ], style={'flex': '3', 'marginRight': '20px'}),
+                
+                # Year Inputs (Right)
+                html.Div([
+                    html.Label("Precise Range:", style={'color': '#ff5722', 'fontWeight': 'bold', 'marginBottom': '5px'}),
+                    html.Div([
+                        dcc.Input(id='year-min-input', type='number', placeholder='Min', style={'width': '70px', 'marginRight': '5px', 'backgroundColor': '#333', 'color': 'white', 'border': '1px solid #555', 'borderRadius': '3px'}),
+                        html.Span("-", style={'color': 'white', 'marginRight': '5px'}),
+                        dcc.Input(id='year-max-input', type='number', placeholder='Max', style={'width': '70px', 'backgroundColor': '#333', 'color': 'white', 'border': '1px solid #555', 'borderRadius': '3px'}),
+                    ], style={'display': 'flex', 'alignItems': 'center'})
+                ], style={'flex': '1'})
+            ], style={'display': 'flex', 'alignItems': 'flex-end', 'marginBottom': '15px'}),
+
+            # Row 2: Country Selector + Region Selector
+            html.Div([
+                # Country Selector (Left)
+                html.Div([
+                    html.Label("Filter by Country:", style={'color': '#ff5722', 'fontWeight': 'bold', 'marginBottom': '5px'}),
+                    dcc.Dropdown(
+                        id='country-dropdown',
+                        options=[{'label': c, 'value': c} for c in sorted(df['Country'].unique())],
+                        placeholder="Select a country",
+                        style={'color': '#333'}
+                    ),
+                ], style={'flex': '1', 'marginRight': '20px'}),
+                
+                # Region Selector (Right)
+                html.Div([
+                    html.Label("Filter by Region:", style={'color': '#ff5722', 'fontWeight': 'bold', 'marginBottom': '5px'}),
+                    dcc.Dropdown(
+                        id='region-dropdown',
+                        options=[{'label': r, 'value': r} for r in sorted(df['Region'].unique())] if 'Region' in df.columns else [],
+                        placeholder="Select a region",
+                        style={'color': '#333'}
+                    ),
+                ], style={'flex': '1'})
+            ], style={'display': 'flex', 'marginBottom': '15px'}),
+        ], style={**CARD_STYLE, 'marginBottom': '20px'}),
 
         # ---------- Volcano Type Filter ----------
         html.Div(
@@ -1594,6 +1615,83 @@ def update_map_mode(n1, n2, n3, n4, s1, s2, s3, s4):
         
     return new_mode, styles[0], styles[1], styles[2], styles[3], texts[0], texts[1], texts[2], texts[3]
 
+@app.callback(
+    [Output('year-slider', 'value'),
+     Output('year-min-input', 'value'),
+     Output('year-max-input', 'value')],
+    [Input('year-slider', 'value'),
+     Input('year-min-input', 'value'),
+     Input('year-max-input', 'value')]
+)
+def sync_year_controls(slider_range, min_input, max_input):
+    ctx_msg = ctx.triggered_id
+    
+    # Default range if nothing is set
+    min_year = int(df['Year'].min())
+    max_year = 2025
+    
+    if not slider_range:
+        slider_range = [min_year, max_year]
+        
+    current_min, current_max = slider_range
+    
+    if ctx_msg == 'year-slider':
+        return slider_range, current_min, current_max
+        
+    elif ctx_msg == 'year-min-input' or ctx_msg == 'year-max-input':
+        new_min = min_input if min_input is not None else current_min
+        new_max = max_input if max_input is not None else current_max
+        
+        # Validate
+        if new_min > new_max:
+            if ctx_msg == 'year-min-input':
+                new_max = new_min
+            else:
+                new_min = new_max
+                
+        return [new_min, new_max], new_min, new_max
+        
+    # Initial load
+    return slider_range, current_min, current_max
+
+@app.callback(
+    [Output('country-dropdown', 'options'),
+     Output('region-dropdown', 'value')],
+    [Input('region-dropdown', 'value'),
+     Input('country-dropdown', 'value')],
+    [State('country-dropdown', 'options'),
+     State('region-dropdown', 'value')]
+)
+def update_dropdown_options(selected_region, selected_country, current_country_options, current_region_value):
+    ctx_msg = ctx.triggered_id
+    
+    # Default options (all countries)
+    all_countries = [{'label': c, 'value': c} for c in sorted(df['Country'].unique())]
+    
+    if ctx_msg == 'region-dropdown':
+        if selected_region:
+            # Filter countries by region
+            filtered_countries = df[df['Region'] == selected_region]['Country'].unique()
+            new_options = [{'label': c, 'value': c} for c in sorted(filtered_countries)]
+            return new_options, selected_region # Keep region selected
+        else:
+            # Reset to all countries if region cleared
+            return all_countries, None
+            
+    elif ctx_msg == 'country-dropdown':
+        if selected_country:
+            # Find region for this country
+            region = df[df['Country'] == selected_country]['Region'].iloc[0]
+            # When country is selected, we might want to keep the country options restricted or not?
+            # Usually better to keep them restricted if a region was already selected.
+            # But if we just picked a country from "All", we should probably set the region.
+            return current_country_options, region
+        else:
+            # Country cleared
+            return current_country_options, current_region_value
+            
+    return all_countries, current_region_value
+
 def create_button_callback(group_id, options):
     """
     Creates a callback for a group of expanding buttons.
@@ -1806,14 +1904,19 @@ def update_agent_insight(bar_hover, heatmap_hover):
      Input('type_scale-store', 'data'),
      Input('type_metric-store', 'data'),
      Input('map-selection-store', 'data'),
-     Input('volcano-type-checklist', 'value')] 
+     Input('volcano-type-checklist', 'value'),
+     Input('region-dropdown', 'value')] 
 )
-def update_dashboard(selected_country, year_range, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode, type_scale, type_metric, map_selection, selected_volcano_types):
+def update_dashboard(selected_country, year_range, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode, type_scale, type_metric, map_selection, selected_volcano_types, selected_region):
     # 1. Check if callback fires
     print("CALLBACK FIRED") 
     
     # 2. Check Data
     dff = df.copy()
+    
+    if selected_region:
+        dff = dff[dff['Region'] == selected_region]
+        
     if selected_country:
         dff = dff[dff['Country'] == selected_country]
     
@@ -1821,7 +1924,6 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     print(f"Rows remaining after filter: {len(dff)}")
     # Filter Data
     print(f"DEBUG: Starting update_dashboard. Country={selected_country}, Year={year_range}", flush=True)
-    dff = df.copy()
     print(f"DEBUG: Initial dff shape: {dff.shape}", flush=True)
 
     if selected_country:
