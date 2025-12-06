@@ -152,7 +152,8 @@ def get_map_points(df):
         margin={"r": 0, "t": 50, "l": 0, "b": 0},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="white")
+        font=dict(color="white"),
+        legend=dict(itemdoubleclick=False)
     )
 
     return fig
@@ -1119,6 +1120,19 @@ app.layout = html.Div(
             # Map Controls
             html.Div([
                 dcc.Store(id='map-mode-store', data='distribution'),
+                # Selection Buttons
+                html.Div([
+                    dcc.Store(id='map-selection-store', data='all'),
+                    html.Button('Select All', id='btn-select-all', style={
+                        'backgroundColor': '#333', 'color': '#ff5722', 
+                        'border': '1px solid #ff5722', 'padding': '5px 15px', 'marginRight': '5px', 'borderRadius': '5px', 'cursor': 'pointer'
+                    }),
+                    html.Button('Unselect All', id='btn-unselect-all', style={
+                        'backgroundColor': '#333', 'color': '#ff5722', 
+                        'border': '1px solid #ff5722', 'padding': '5px 15px', 'borderRadius': '5px', 'cursor': 'pointer'
+                    })
+                ], style={'display': 'flex', 'width': '100%', 'marginBottom': '10px', 'justifyContent': 'flex-end'}),
+
                 html.Div([
                     html.Div("Global Volcano Distribution", id='btn-distribution', n_clicks=0, style={
                         'flex-grow': '3', 'background-color': '#ff5722', 'color': 'white', 
@@ -1550,6 +1564,20 @@ create_button_callback('heatmap', [
 ])
 
 @app.callback(
+    Output('map-selection-store', 'data'),
+    [Input('btn-select-all', 'n_clicks'),
+     Input('btn-unselect-all', 'n_clicks')],
+    prevent_initial_call=True
+)
+def update_selection_store(n_select, n_unselect):
+    ctx_msg = ctx.triggered_id
+    if ctx_msg == 'btn-select-all':
+        return 'all'
+    elif ctx_msg == 'btn-unselect-all':
+        return 'none'
+    return 'all'
+
+@app.callback(
     [Output('map-graph', 'figure'),
      Output('time-graph', 'figure'),
      Output('impact-graph', 'figure'),
@@ -1589,9 +1617,10 @@ create_button_callback('heatmap', [
      Input('map-mode-store', 'data'),
      Input('time-store', 'data'),
      Input('type_scale-store', 'data'),
-     Input('type_metric-store', 'data')] 
+     Input('type_metric-store', 'data'),
+     Input('map-selection-store', 'data')] 
 )
-def update_dashboard(selected_country, year_range, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode, type_scale, type_metric):
+def update_dashboard(selected_country, year_range, selected_vei_metric, selected_secondary_metric, selected_heatmap_metric, map_mode, time_mode, type_scale, type_metric, map_selection):
     # 1. Check if callback fires
     print("CALLBACK FIRED") 
     
@@ -1626,6 +1655,13 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     # Figures
     if map_mode == 'distribution':
         fig1 = get_map_points(dff)
+        
+        # Apply selection
+        if map_selection == 'none':
+            fig1.for_each_trace(lambda trace: trace.update(visible='legendonly'))
+        elif map_selection == 'all':
+            fig1.for_each_trace(lambda trace: trace.update(visible=True))
+            
     elif map_mode == 'frequency':
         # Create a count column for aggregation
         dff_map = dff.copy()
