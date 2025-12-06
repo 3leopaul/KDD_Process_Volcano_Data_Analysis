@@ -981,28 +981,7 @@ def get_deaths_vs_damage_figure(df):
     )
     return fig
 
-def get_elevation_vs_vei_figure(df):
-    """
-    Scatter plot of Elevation vs VEI.
-    Full availability (Good for debunking myths).
-    """
-    # Filter zeros
-    df_plot = df[df['Elevation'] != 0].copy()
 
-    fig = px.scatter(
-        df_plot, x="VEI", y="Elevation",
-        title="Elevation vs. VEI",
-        template="plotly_dark",
-        hover_name="Name",
-        hover_data=["Country", "Year"]
-    )
-    fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        font=dict(color="white")
-    )
-    return fig
 
 def get_volcano_type_stats_table(df):
     """
@@ -1538,7 +1517,7 @@ app.layout = html.Div(
                                 html.Div([dcc.Graph(id="death-boxplot-by-type", style={'height': '400px'})], style={**CARD_STYLE}),
                                 html.Div([dcc.Graph(id="correlation-heatmap", style={'height': '400px'})], style={**CARD_STYLE}),
                                 html.Div([dcc.Graph(id="deaths-damage-graph", style={'height': '400px'})], style={**CARD_STYLE}),
-                                html.Div([dcc.Graph(id="elevation-vei-graph", style={'height': '400px'})], style={**CARD_STYLE}),
+
                             ],
                             style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "20px", "padding": "20px"},
                         )
@@ -1796,7 +1775,7 @@ def update_agent_insight(bar_hover, heatmap_hover):
      Output('vei-deaths-graph', 'figure'),
      Output('deaths-injuries-graph', 'figure'),
      Output('deaths-damage-graph', 'figure'),
-     Output('elevation-vei-graph', 'figure'),
+
      Output('kpi-eruptions', 'children'),
      Output('kpi-deaths', 'children'),
      Output('kpi-damage', 'children'),
@@ -1900,7 +1879,7 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     fig_vei_deaths = volcano_type_vs_hasard_heatmap(dff, normalize=(selected_heatmap_metric == 'percent'))
     fig_deaths_injuries = get_type_vs_frequency(dff)
     fig_deaths_damage = get_deaths_vs_damage_figure(dff)
-    fig_elevation_vei = get_elevation_vs_vei_figure(dff)
+
     
     # --- NEW GRAPHS GENERATION ---
     # Regional
@@ -1927,7 +1906,7 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
 
     return (
         fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, 
-        fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei,
+        fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage,
         total_eruptions, total_deaths, total_damage, 
         "The number of eruptions over time tends to increase due to more data being collected over the years. Forecasting eruptions on past data is therefore irrelevant. The unpredictibility of eruptions makes them dangerous, we will look at how we can mitigate their impact.",
         f"Temporal analysis shows {len(dff)} eruptions in this period.",
