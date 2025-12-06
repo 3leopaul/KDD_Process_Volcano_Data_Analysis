@@ -76,7 +76,8 @@ def render_region_volcano_sunburst(df):
     dff = df[df["Total_Deaths"] > 0].copy()
     if dff.empty: return go.Figure()
     fig = px.sunburst(dff, path=['Country', 'Location', 'Name'], values='Total_Deaths',
-                      color='Total_Deaths', color_continuous_scale='Reds')
+                      color='Total_Deaths', color_continuous_scale='Reds',
+                      hover_data=['Type', 'Agent'])
     return update_layout(fig, "Regional Hierarchy of Fatalities")
 
 def render_deadliest_volcanoes_treemap(df):

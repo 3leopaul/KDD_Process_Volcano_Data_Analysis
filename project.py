@@ -1,6 +1,6 @@
 import pandas as pd
 import plotly.express as px
-from dash import Dash, dcc, html, Input, Output, State, ctx
+from dash import Dash, dcc, html, Input, Output, State, ctx, dash_table
 import plotly.graph_objects as go
 import numpy as np
 import src.components.impact_analysis as impact
@@ -962,6 +962,75 @@ def get_elevation_vs_vei_figure(df):
     )
     return fig
 
+def get_volcano_type_stats_table(df):
+    """
+    Creates a table showing Total Eruptions, Last Eruption Year, 
+    and Mean/Median Time Between Eruptions by Volcano Type.
+    """
+    if df.empty:
+        return dash_table.DataTable()
+
+    # 1. Calculate Intervals
+    # Sort by Type and Year to ensure correct diff calculation
+    df_sorted = df.sort_values(['Type', 'Year'])
+    
+    # Calculate difference in years between consecutive eruptions within each Type
+    df_sorted['Interval'] = df_sorted.groupby('Type')['Year'].diff()
+
+    # 2. Aggregation
+    stats = df_sorted.groupby('Type').agg(
+        Total_Eruptions=('Name', 'count'),
+        Last_Eruption=('Year', 'max'),
+        Mean_Interval=('Interval', 'mean'),
+        Median_Interval=('Interval', 'median')
+    ).reset_index()
+
+    # 3. Formatting
+    # Sort by Total Eruptions descending
+    stats = stats.sort_values('Total_Eruptions', ascending=False)
+
+    # Format Last Eruption to be integer
+    stats['Last_Eruption'] = stats['Last_Eruption'].fillna(0).astype(int)
+    
+    # Format Intervals (round to 1 decimal place, fill NaNs with 0 or -)
+    stats['Mean_Interval'] = stats['Mean_Interval'].round(1).fillna('-')
+    stats['Median_Interval'] = stats['Median_Interval'].round(1).fillna('-')
+
+    # 4. Create DataTable
+    table = dash_table.DataTable(
+        data=stats.to_dict('records'),
+        columns=[
+            {'name': 'Volcano Type', 'id': 'Type'},
+            {'name': 'Total Eruptions', 'id': 'Total_Eruptions'},
+            {'name': 'Last Eruption Year', 'id': 'Last_Eruption'},
+            {'name': 'Mean Interval (Years)', 'id': 'Mean_Interval'},
+            {'name': 'Median Interval (Years)', 'id': 'Median_Interval'}
+        ],
+        style_header={
+            'backgroundColor': '#333',
+            'color': 'white',
+            'fontWeight': 'bold',
+            'border': '1px solid #444'
+        },
+        style_cell={
+            'backgroundColor': '#1e1e1e',
+            'color': 'white',
+            'border': '1px solid #444',
+            'textAlign': 'left',
+            'padding': '10px'
+        },
+        style_data_conditional=[
+            {
+                'if': {'row_index': 'odd'},
+                'backgroundColor': '#252525'
+            }
+        ],
+        page_size=10,
+        style_table={'overflowX': 'auto'}
+    )
+    
+    return table
+
 # Initialize App
 app = Dash(__name__)
 
@@ -1252,6 +1321,12 @@ app.layout = html.Div(
                                     ], style={'textAlign': 'center', 'marginTop': '5px'}),
                                     dcc.Graph(id='volcano_type', style={'height': '400px'}),
                                 ], style={**CARD_STYLE}),
+                                
+                                # Volcano Type Statistics Table
+                                html.Div([
+                                    html.H4("Volcano Type Statistics", style={'color': '#888', 'marginBottom': '10px'}),
+                                    html.Div(id='volcano-stats-table-container')
+                                ], style={**CARD_STYLE, 'gridColumn': '1 / -1'}), # Span full width
                             ],
                             style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "20px", "padding": "20px"},
                         )
@@ -1505,7 +1580,8 @@ create_button_callback('heatmap', [
      Output('death-boxplot-by-type', 'figure'),
      Output('pareto-chart', 'figure'),
      Output('loglog-plot', 'figure'),
-     Output('correlation-heatmap', 'figure')],
+     Output('correlation-heatmap', 'figure'),
+     Output('volcano-stats-table-container', 'children')],
     [Input('country-dropdown', 'value'),
      Input('year-slider', 'value'),
      Input('vei-store', 'data'),
@@ -1598,6 +1674,21 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
     fig_pareto = impact.render_pareto_chart(dff)
     fig_loglog = impact.render_loglog_heavytail(dff)
     fig_corr = impact.render_correlation_heatmap(dff)
+    
+    # Table
+    table_stats = get_volcano_type_stats_table(dff)
+
+    return (
+        fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, 
+        fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei,
+        total_eruptions, total_deaths, total_damage, 
+        "Forecast is based on historical data and may not predict future events accurately.",
+        f"Temporal analysis shows {len(dff)} eruptions in this period.",
+        fig_regions, fig_sunburst, fig_treemap, fig_donut,
+        fig_inj_scatter, fig_inj_bubble, fig_inj_ratio, fig_inj_ratio_sc,
+        fig_boxplot, fig_boxplot_type, fig_pareto, fig_loglog, fig_corr,
+        table_stats
+    )
 
     # Disclaimer Logic
     disclaimer_text = ""
