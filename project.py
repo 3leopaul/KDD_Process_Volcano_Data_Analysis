@@ -1195,10 +1195,27 @@ app.layout = html.Div(
 
 
         # =============================================================================
-        # NARRATIVE SECTION 2: The Indirect Killer
+        # NARRATIVE SECTION 2: The Matrix of Threat
         # =============================================================================
         html.Div([
-            html.H2("2. The Indirect Killer", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
+            html.H2("2. The Matrix of Threat", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
+            html.P([
+                html.B("Insight: "), "Stratovolcanoes are responsible for the most total deaths (217k+), simply due to their frequency. ",
+                "However, Calderas are the deadliest *per event* (avg ~1,100 deaths), followed by Maars.",
+                html.Br(),
+                html.B("Conclusion: "), "Risk = Probability x Impact. Stratovolcanoes are high probability/high impact, while Calderas are low probability/extreme impact."
+            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
+
+            html.Div([
+                html.Div([dcc.Graph(id='deaths-injuries-graph', style={'height': '500px'})], style={**CARD_STYLE, 'flex': '1'}) # This is the Risk Matrix (get_type_vs_frequency)
+            ], style={'display': 'flex'})
+        ], style={'marginBottom': '60px'}),
+
+        # =============================================================================
+        # NARRATIVE SECTION 3: The Indirect Killer
+        # =============================================================================
+        html.Div([
+            html.H2("3. The Indirect Killer", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
             html.P([
                 html.B("Insight: "), "Pyroclastic Flows are the #1 historical killer (182k+ deaths), followed by Tsunamis (137k+). ",
                 "Surprisingly, 'Indirect' causes (starvation, disease) are the 3rd deadliest category (112k+), often more lethal than direct lava flows.",
@@ -1240,24 +1257,6 @@ app.layout = html.Div(
                     ]),
                     dcc.Graph(id='vei-deaths-graph', style={'height': '400px', 'width': '100%'}) 
                 ], style={**CARD_STYLE, 'flex': '1'})
-            ], style={'display': 'flex'})
-        ], style={'marginBottom': '60px'}),
-
-
-        # =============================================================================
-        # NARRATIVE SECTION 3: The Matrix of Threat
-        # =============================================================================
-        html.Div([
-            html.H2("3. The Matrix of Threat", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
-            html.P([
-                html.B("Insight: "), "Stratovolcanoes are responsible for the most total deaths (217k+), simply due to their frequency. ",
-                "However, Calderas are the deadliest *per event* (avg ~1,100 deaths), followed by Maars.",
-                html.Br(),
-                html.B("Conclusion: "), "Risk = Probability x Impact. Stratovolcanoes are high probability/high impact, while Calderas are low probability/extreme impact."
-            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
-
-            html.Div([
-                html.Div([dcc.Graph(id='deaths-injuries-graph', style={'height': '500px'})], style={**CARD_STYLE, 'flex': '1'}) # This is the Risk Matrix (get_type_vs_frequency)
             ], style={'display': 'flex'})
         ], style={'marginBottom': '60px'}),
 
@@ -1682,7 +1681,7 @@ def update_dashboard(selected_country, year_range, selected_vei_metric, selected
         fig1, fig2, fig3, fig_vei, fig_top_countries, fig_indirect, fig_volcano_type, 
         fig_vei_deaths, fig_deaths_injuries, fig_deaths_damage, fig_elevation_vei,
         total_eruptions, total_deaths, total_damage, 
-        "Forecast is based on historical data and may not predict future events accurately.",
+        "The number of eruptions over time tends to increase due to more data being collected over the years. Forecasting eruptions on past data is therefore irrelevant. The unpredictibility of eruptions makes them dangerous, we will look at how we can mitigate their impact.",
         f"Temporal analysis shows {len(dff)} eruptions in this period.",
         fig_regions, fig_sunburst, fig_treemap, fig_donut,
         fig_inj_scatter, fig_inj_bubble, fig_inj_ratio, fig_inj_ratio_sc,
