@@ -1357,65 +1357,6 @@ app.layout = html.Div(
         ], style={'marginBottom': '60px'}),
 
         # =============================================================================
-        # NARRATIVE SECTION 3: The Indirect Killer
-        # =============================================================================
-        html.Div([
-            html.H2("3. The Indirect Killer", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
-            html.P([
-                html.B("Insight: "), "Pyroclastic Flows are the #1 historical killer (182k+ deaths), followed by Tsunamis (137k+). ",
-                "Surprisingly, 'Indirect' causes (starvation, disease) are the 3rd deadliest category (112k+), often more lethal than direct lava flows.",
-                html.Br(),
-                html.B("Conclusion: "), "While 'Tephra' (ash) is the most frequent hazard, flows and waves are the true mass killers."
-            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
-
-            html.Div([
-                # Secondary Hazards Bar Chart
-                html.Div([
-                    html.Div([
-                        create_expanding_buttons(
-                            'secondary',
-                            [
-                                {'label': 'Median Deaths', 'value': 'median'},
-                                {'label': 'Mean Deaths', 'value': 'mean'},
-                                {'label': 'Total Deaths (All)', 'value': 'sum'},
-                                {'label': 'Median (Agents)', 'value': 'median_agents'},
-                                {'label': 'Mean (Agents)', 'value': 'mean_agents'},
-                                {'label': 'Total (Agents)', 'value': 'sum_agents'}
-                            ],
-                            'mean'
-                        ),
-                    ], style={'textAlign': 'center'}),
-                    dcc.Graph(id='with_and_without_indirect_deaths_by_type', style={'height': '400px'})
-                ], style={**CARD_STYLE, 'flex': '2', 'marginRight': '20px'}),
-
-                # Insight Box (Middle)
-                html.Div(id='agent-insight-box', style={
-                    **CARD_STYLE, 'flex': '1', 'marginRight': '20px', 
-                    'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'center',
-                    'padding': '10px', 'textAlign': 'center', 'minHeight': '400px'
-                }, children=[
-                    html.H4("Agent Definition", style={'color': '#ff5722', 'marginBottom': '5px'}),
-                    html.P("Hover over agents to see their definition", style={'color': '#888', 'fontStyle': 'italic', 'fontSize': '12px'})
-                ]),
-
-                # Heatmap
-                html.Div([
-                    html.Div([
-                        create_expanding_buttons(
-                            'heatmap',
-                            [
-                                {'label': 'Count', 'value': 'count'},
-                                {'label': 'Risk Percentage', 'value': 'percent'}
-                            ],
-                            'count'
-                        )
-                    ]),
-                    dcc.Graph(id='vei-deaths-graph', style={'height': '400px', 'width': '100%'}) 
-                ], style={**CARD_STYLE, 'flex': '2'})
-            ], style={'display': 'flex'})
-        ], style={'marginBottom': '60px'}),
-
-        # =============================================================================
         # DETAILED EXPLORATION (Tabs)
         # =============================================================================
         html.H2("Detailed Exploration", style={'color': 'white', 'borderBottom': '1px solid #333', 'paddingBottom': '10px'}),
@@ -1548,6 +1489,65 @@ app.layout = html.Div(
                 ),
             ],
         ),
+
+        # =============================================================================
+        # NARRATIVE SECTION 3: The Indirect Killer
+        # =============================================================================
+        html.Div([
+            html.H2("3. The Indirect Killer", style={'color': '#ff5722', 'borderBottom': '2px solid #ff5722', 'paddingBottom': '10px'}),
+            html.P([
+                html.B("Insight: "), "Pyroclastic Flows are the #1 historical killer (182k+ deaths), followed by Tsunamis (137k+). ",
+                "Surprisingly, 'Indirect' causes (starvation, disease) are the 3rd deadliest category (112k+), often more lethal than direct lava flows.",
+                html.Br(),
+                html.B("Conclusion: "), "While 'Tephra' (ash) is the most frequent hazard, flows and waves are the true mass killers."
+            ], style={'fontSize': '16px', 'marginBottom': '20px'}),
+
+            html.Div([
+                # Secondary Hazards Bar Chart
+                html.Div([
+                    html.Div([
+                        create_expanding_buttons(
+                            'secondary',
+                            [
+                                {'label': 'Median Deaths', 'value': 'median'},
+                                {'label': 'Mean Deaths', 'value': 'mean'},
+                                {'label': 'Total Deaths (All)', 'value': 'sum'},
+                                {'label': 'Median (Agents)', 'value': 'median_agents'},
+                                {'label': 'Mean (Agents)', 'value': 'mean_agents'},
+                                {'label': 'Total (Agents)', 'value': 'sum_agents'}
+                            ],
+                            'mean'
+                        ),
+                    ], style={'textAlign': 'center'}),
+                    dcc.Graph(id='with_and_without_indirect_deaths_by_type', style={'height': '400px'})
+                ], style={**CARD_STYLE, 'flex': '2', 'marginRight': '20px'}),
+
+                # Insight Box (Middle)
+                html.Div(id='agent-insight-box', style={
+                    **CARD_STYLE, 'flex': '1', 'marginRight': '20px', 
+                    'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'center',
+                    'padding': '10px', 'textAlign': 'center', 'minHeight': '400px'
+                }, children=[
+                    html.H4("Agent Definition", style={'color': '#ff5722', 'marginBottom': '5px'}),
+                    html.P("Hover over agents to see their definition", style={'color': '#888', 'fontStyle': 'italic', 'fontSize': '12px'})
+                ]),
+
+                # Heatmap
+                html.Div([
+                    html.Div([
+                        create_expanding_buttons(
+                            'heatmap',
+                            [
+                                {'label': 'Count', 'value': 'count'},
+                                {'label': 'Risk Percentage', 'value': 'percent'}
+                            ],
+                            'count'
+                        )
+                    ]),
+                    dcc.Graph(id='vei-deaths-graph', style={'height': '400px', 'width': '100%'}) 
+                ], style={**CARD_STYLE, 'flex': '2'})
+            ], style={'display': 'flex'})
+        ], style={'marginBottom': '60px'}),
 
     ], style=CONTENT_STYLE)
 
