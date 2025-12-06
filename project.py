@@ -1252,7 +1252,7 @@ app.layout = html.Div(
             html.Div([
                 dcc.Store(id='map-mode-store', data='distribution'),
                 # Selection Buttons
-                html.Div([
+                html.Div(id='map-selection-container', children=[
                     dcc.Store(id='map-selection-store', data='all'),
                     html.Button('Select All', id='btn-select-all', style={
                         'backgroundColor': '#333', 'color': '#ff5722', 
@@ -1614,6 +1614,16 @@ def update_map_mode(n1, n2, n3, n4, s1, s2, s3, s4):
         styles.append(style)
         
     return new_mode, styles[0], styles[1], styles[2], styles[3], texts[0], texts[1], texts[2], texts[3]
+
+@app.callback(
+    Output('map-selection-container', 'style'),
+    Input('map-mode-store', 'data')
+)
+def toggle_map_selection_buttons(map_mode):
+    if map_mode == 'distribution':
+        return {'display': 'flex', 'width': '100%', 'marginBottom': '10px', 'justifyContent': 'flex-end'}
+    else:
+        return {'display': 'none'}
 
 @app.callback(
     [Output('year-slider', 'value'),
