@@ -22,12 +22,12 @@ def update_layout(fig, title="", x_title="", y_title=""):
 def render_top10_deadliest_eruptions(df):
     # Top 10 eruptions by Total Deaths
     if df.empty: return go.Figure()
-    dff = df.sort_values("Total_Deaths", ascending=False).head(10)
-    fig = px.bar(dff, x="Total_Deaths", y="Name", orientation='h',
-                 text="Total_Deaths", color="Total_Deaths", color_continuous_scale="Reds")
+    dff = df.sort_values("Deaths", ascending=False).head(10)
+    fig = px.bar(dff, x="Deaths", y="Name", orientation='h',
+                 text="Deaths", color="Deaths", color_continuous_scale="Reds")
     fig.update_traces(textposition='outside')
     fig.update_yaxes(autorange="reversed") # Top 1 at top
-    return update_layout(fig, "Top 10 Deadliest Eruptions", "Total Deaths", "Volcano Name")
+    return update_layout(fig, "Top 10 Deadliest Eruptions", "Deaths", "Volcano Name")
 
 def render_top10_deadliest_volcanoes(df):
     # Group by Volcano Name (some have multiple eruptions)
@@ -60,22 +60,22 @@ def render_deaths_over_time(df):
 # --- Tab 2: Regions & Volcanoes ---
 
 def render_top10_deadliest_regions(df):
-    # Assuming 'Location' is Region
+    # Assuming 'Region' is Region
     if df.empty: return go.Figure()
-    dff = df.groupby("Location")["Total_Deaths"].sum().reset_index()
+    dff = df.groupby("Region")["Total_Deaths"].sum().reset_index()
     dff = dff.sort_values("Total_Deaths", ascending=False).head(10)
-    fig = px.bar(dff, x="Total_Deaths", y="Location", orientation='h',
+    fig = px.bar(dff, x="Total_Deaths", y="Region", orientation='h',
                  text="Total_Deaths", color="Total_Deaths", color_continuous_scale="Reds")
     fig.update_traces(textposition='outside')
     fig.update_yaxes(autorange="reversed")
     return update_layout(fig, "Top 10 Deadliest Regions", "Total Deaths", "Region")
 
 def render_region_volcano_sunburst(df):
-    # Hierarchy: Country -> Location -> Name
+    # Hierarchy: Country -> Region -> Name
     if df.empty: return go.Figure()
     dff = df[df["Total_Deaths"] > 0].copy()
     if dff.empty: return go.Figure()
-    fig = px.sunburst(dff, path=['Country', 'Location', 'Name'], values='Total_Deaths',
+    fig = px.sunburst(dff, path=['Country', 'Region', 'Name'], values='Total_Deaths',
                       color='Total_Deaths', color_continuous_scale='Reds',
                       hover_data=['Type', 'Agent'])
     return update_layout(fig, "Regional Hierarchy of Fatalities")
