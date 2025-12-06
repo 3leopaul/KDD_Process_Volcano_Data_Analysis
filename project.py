@@ -902,7 +902,7 @@ def get_type_vs_frequency(df):
     # 6. Styling Polish
     fig.update_traces(
         textposition='top center', # Move text above dot
-        marker=dict(line=dict(width=1, color='White')) # Add white ring to dots for contrast
+        marker=dict(line=dict(width=1, color='White'), sizemin=5) # Add white ring and min size
     )
     
     fig.update_traces(marker=dict(color='#ff5722', opacity=0.7))
